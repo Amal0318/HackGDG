@@ -42,3 +42,10 @@ export interface HealthStatus {
 export interface PatientsResponse {
   patients: Patient[];
 }
+
+export interface SystemMetrics {
+  kafka_throughput: number;
+  stream_latency_ms: number;
+  ml_inference_time_ms: number;
+  active_patients: number;
+}

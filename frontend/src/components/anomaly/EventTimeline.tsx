@@ -1,108 +1,78 @@
-import { VitalMessage } from '../../types';
+import { VitalMessage, EventType } from '../../types';
 
 interface EventTimelineProps {
   events: VitalMessage[];
-  maxEvents?: number;
   onEventClick?: (event: VitalMessage) => void;
 }
 
-export const EventTimeline = ({ events, maxEvents = 10, onEventClick }: EventTimelineProps) => {
-  const recentEvents = events
-    .filter(e => e.event_type !== 'NONE' || e.anomaly_detected)
-    .slice(-maxEvents)
-    .reverse();
+const getEventColor = (eventType: EventType): string => {
+  switch (eventType) {
+    case 'HYPOTENSION':
+      return 'bg-red-500';
+    case 'TACHYCARDIA':
+      return 'bg-orange-500';
+    case 'HYPOXIA':
+      return 'bg-purple-500';
+    case 'SEPSIS_ALERT':
+      return 'bg-red-700';
+    default:
+      return 'bg-gray-400';
+  }
+};
 
-  if (recentEvents.length === 0) {
+const getEventIcon = (eventType: EventType): string => {
+  switch (eventType) {
+    case 'HYPOTENSION':
+      return '↓';
+    case 'TACHYCARDIA':
+      return '⚡';
+    case 'HYPOXIA':
+      return '💨';
+    case 'SEPSIS_ALERT':
+      return '⚠️';
+    default:
+      return '•';
+  }
+};
+
+export const EventTimeline = ({ events, onEventClick }: EventTimelineProps) => {
+  const filteredEvents = events.filter(e => e.event_type !== 'NONE');
+
+  if (filteredEvents.length === 0) {
     return (
-      <div className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm">
-        <h3 className="text-gray-900 font-semibold mb-3">Event Timeline</h3>
-        <div className="text-center py-4 text-gray-500 text-sm">
-          No events detected
-        </div>
+      <div className="bg-white p-4 rounded-lg shadow text-center text-gray-500">
+        No events recorded
       </div>
     );
   }
 
-  const getEventColor = (event: VitalMessage) => {
-    if (event.anomaly_detected) return 'border-orange-400 bg-orange-50';
-    
-    switch (event.event_type) {
-      case 'HYPOTENSION':
-        return 'border-red-400 bg-red-50';
-      case 'TACHYCARDIA':
-        return 'border-red-400 bg-red-50';
-      case 'HYPOXIA':
-        return 'border-blue-400 bg-blue-50';
-      case 'SEPSIS_ALERT':
-        return 'border-purple-400 bg-purple-50';
-      default:
-        return 'border-gray-300 bg-gray-50';
-    }
-  };
-
-  const getEventIcon = (event: VitalMessage) => {
-    if (event.anomaly_detected) return '⚠️';
-    
-    switch (event.event_type) {
-      case 'HYPOTENSION':
-        return '📉';
-      case 'TACHYCARDIA':
-        return '💓';
-      case 'HYPOXIA':
-        return '🫁';
-      case 'SEPSIS_ALERT':
-        return '🦠';
-      default:
-        return '📌';
-    }
-  };
-
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm">
-      <h3 className="text-gray-900 font-semibold mb-3">Event Timeline</h3>
-      
-      <div className="space-y-2 max-h-96 overflow-y-auto">
-        {recentEvents.map((event, index) => (
-          <button
-            key={`${event.timestamp}-${index}`}
+    <div className="bg-white p-4 rounded-lg shadow">
+      <h3 className="text-lg font-semibold text-gray-800 mb-4">Event Timeline</h3>
+      <div className="space-y-3 max-h-96 overflow-y-auto">
+        {filteredEvents.map((event, index) => (
+          <div
+            key={index}
+            className="flex items-start space-x-3 cursor-pointer hover:bg-gray-50 p-2 rounded transition-colors"
             onClick={() => onEventClick?.(event)}
-            className={`w-full text-left p-3 rounded-lg border-l-4 ${getEventColor(event)} transition-all hover:shadow-md hover:scale-[1.01] cursor-pointer`}
           >
-            <div className="flex items-start justify-between">
-              <div className="flex items-start space-x-2">
-                <span className="text-xl">{getEventIcon(event)}</span>
-                <div>
-                  <div className="flex items-center space-x-2">
-                    {event.anomaly_detected && (
-                      <span className="text-sm font-bold text-orange-700">
-                        {event.anomaly_type?.replace('_', ' ') || 'ANOMALY'}
-                      </span>
-                    )}
-                    {event.event_type !== 'NONE' && (
-                      <span className="text-sm font-bold text-gray-800">
-                        {event.event_type.replace('_', ' ')}
-                      </span>
-                    )}
-                  </div>
-                  
-                  <div className="text-xs text-gray-600 mt-1 space-y-1">
-                    <div className="flex space-x-3">
-                      <span>HR: {event.heart_rate}</span>
-                      <span>BP: {event.systolic_bp}/{event.diastolic_bp}</span>
-                      <span>SpO2: {event.spo2}%</span>
-                    </div>
-                    {event.risk_score !== undefined && (
-                      <div>Risk: {(event.risk_score * 100).toFixed(0)}%</div>
-                    )}
-                  </div>
-                </div>
-              </div>
-              
-              <span className="text-xs text-gray-500 whitespace-nowrap ml-2">
-                {new Date(event.timestamp).toLocaleTimeString()}
-              </span>
+            <div className={`flex-shrink-0 w-8 h-8 rounded-full ${getEventColor(event.event_type)} flex items-center justify-center text-white text-sm`}>
+              {getEventIcon(event.event_type)}
             </div>
-          </button>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-gray-900">
+                {event.event_type}
+              </p>
+              <p className="text-xs text-gray-500">
+                {new Date(event.timestamp).toLocaleString()}
+              </p>
+              {event.anomaly_detected && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800 mt-1">
+                  Anomaly
+                </span>
+              )}
+            </div>
+          </div>
         ))}
       </div>
     </div>

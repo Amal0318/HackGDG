@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { HealthStatus, PatientsResponse } from '../types';
+import { HealthStatus, PatientsResponse, SystemMetrics } from '../types';
 
 const API_BASE_URL = '/api';
 
@@ -16,4 +16,13 @@ export const getHealth = async (): Promise<HealthStatus> => {
 export const getPatients = async (): Promise<PatientsResponse> => {
   const response = await api.get<PatientsResponse>('/patients');
   return response.data;
+};
+
+export const getSystemMetrics = async (): Promise<SystemMetrics> => {
+  const response = await api.get<SystemMetrics>('/system/metrics');
+  return response.data;
+};
+
+export const acknowledgeAlert = async (patientId: string, note: string): Promise<void> => {
+  await api.post('/alerts/acknowledge', { patient_id: patientId, note });
 };

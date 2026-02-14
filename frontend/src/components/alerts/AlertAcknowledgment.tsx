@@ -1,8 +1,6 @@
-import { useState } from 'react';
-
 interface AlertAcknowledgmentProps {
   patientId: string;
-  riskScore: number;
+  riskScore?: number;
   onAcknowledge: (note: string) => void;
   isAcknowledged: boolean;
 }
@@ -10,82 +8,57 @@ interface AlertAcknowledgmentProps {
 export const AlertAcknowledgment = ({ 
   patientId, 
   riskScore, 
-  onAcknowledge,
+  onAcknowledge, 
   isAcknowledged 
 }: AlertAcknowledgmentProps) => {
-  const [showNoteInput, setShowNoteInput] = useState(false);
-  const [note, setNote] = useState('');
+  const alertLevel = riskScore && riskScore > 0.85 ? 'CRITICAL' : 'WARNING';
+  const alertColor = alertLevel === 'CRITICAL' ? 'red' : 'yellow';
 
-  const handleAcknowledge = () => {
-    if (showNoteInput && note.trim()) {
-      onAcknowledge(note);
-      setNote('');
-      setShowNoteInput(false);
+  const handleClick = () => {
+    if (isAcknowledged) {
+      onAcknowledge(''); // Clear acknowledgment
     } else {
-      setShowNoteInput(true);
+      const note = prompt('Add a note (optional):');
+      if (note !== null) {
+        onAcknowledge(note);
+      }
     }
   };
 
-  const handleCancel = () => {
-    setShowNoteInput(false);
-    setNote('');
-  };
-
-  if (isAcknowledged) {
-    return (
-      <div className="bg-green-50 border border-green-200 rounded-lg p-3 flex items-center justify-between">
-        <div className="flex items-center space-x-2">
-          <span className="text-green-600 text-lg">✓</span>
-          <span className="text-green-800 text-sm font-medium">Alert Acknowledged</span>
+  return (
+    <div className={`bg-${alertColor}-50 border-l-4 border-${alertColor}-400 p-4 rounded-lg shadow-sm`}>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center">
+          <svg className={`h-6 w-6 text-${alertColor}-400 mr-3`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <div>
+            <h3 className={`text-sm font-semibold text-${alertColor}-800`}>
+              {alertLevel} Alert - Patient {patientId}
+            </h3>
+            {riskScore !== undefined && (
+              <p className={`text-xs text-${alertColor}-700 mt-1`}>
+                Risk Score: {(riskScore * 100).toFixed(0)}%
+              </p>
+            )}
+          </div>
         </div>
         <button
-          onClick={() => onAcknowledge('')}
-          className="text-green-600 hover:text-green-800 text-xs underline"
+          onClick={handleClick}
+          className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+            isAcknowledged
+              ? 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              : `bg-${alertColor}-600 text-white hover:bg-${alertColor}-700`
+          }`}
         >
-          Reset
+          {isAcknowledged ? 'Acknowledged ✓' : 'Acknowledge Alert'}
         </button>
       </div>
-    );
-  }
-
-  return (
-    <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-      {!showNoteInput ? (
-        <button
-          onClick={handleAcknowledge}
-          className="w-full bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center justify-center space-x-2"
-        >
-          <span>✓</span>
-          <span>Acknowledge Alert</span>
-        </button>
-      ) : (
-        <div className="space-y-3">
-          <label className="block">
-            <span className="text-gray-700 text-sm font-medium">Clinical Note (Optional)</span>
-            <textarea
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder="Document your assessment or intervention..."
-              className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none text-gray-900"
-              rows={3}
-            />
-          </label>
-          <div className="flex space-x-2">
-            <button
-              onClick={handleAcknowledge}
-              className="flex-1 bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 rounded-lg font-medium transition-colors"
-            >
-              Confirm
-            </button>
-            <button
-              onClick={handleCancel}
-              className="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 px-4 py-2 rounded-lg font-medium transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
+      {isAcknowledged && (
+        <div className="mt-2 text-xs text-gray-600">
+          Alert acknowledged at {new Date().toLocaleTimeString()}
         </div>
       )}
     </div>
   );
-};
+}

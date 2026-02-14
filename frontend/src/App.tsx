@@ -1,42 +1,36 @@
 import { useEffect } from 'react';
 import { Header } from './components/layout/Header';
+import { Footer } from './components/layout/Footer';
 import { Sidebar } from './components/layout/Sidebar';
 import { MainPanel } from './components/layout/MainPanel';
 import { MultiPatientDashboard } from './components/dashboard/MultiPatientDashboard';
-import { Footer } from './components/layout/Footer';
-import { useVitalStream } from './hooks/useVitalStream';
-import { useHealthStatus } from './hooks/useHealthStatus';
+import { SystemMonitoringPanel } from './components/monitoring/SystemMonitoringPanel';
 import { useStore } from './store';
+import { useHealthStatus } from './hooks/useHealthStatus';
+import { useVitalStream } from './hooks/useVitalStream';
 
 function App() {
-  // Initialize WebSocket connection
-  useVitalStream();
+  const { viewMode } = useStore();
   
-  // Initialize health status polling
+  // Initialize health monitoring
   useHealthStatus();
   
-  const viewMode = useStore(state => state.viewMode);
-  const setViewMode = useStore(state => state.setViewMode);
-  
-  // Handle navigation from multi-patient to single-patient view
-  useEffect(() => {
-    const handleNavigateToPatient = () => {
-      setViewMode('single-patient');
-    };
-    
-    window.addEventListener('navigate-to-patient', handleNavigateToPatient);
-    return () => window.removeEventListener('navigate-to-patient', handleNavigateToPatient);
-  }, [setViewMode]);
+  // Initialize vital stream
+  useVitalStream();
 
   return (
-    <div className="flex flex-col h-screen bg-background-light">
+    <div className="flex flex-col h-screen bg-gray-100">
       <Header />
-      
       <div className="flex flex-1 overflow-hidden">
         {viewMode === 'single-patient' && <Sidebar />}
-        {viewMode === 'single-patient' ? <MainPanel /> : <MultiPatientDashboard />}
+        <main className="flex-1 overflow-auto">
+          {viewMode === 'multi-patient' ? (
+            <MultiPatientDashboard />
+          ) : (
+            <MainPanel />
+          )}
+        </main>
       </div>
-      
       <Footer />
     </div>
   );

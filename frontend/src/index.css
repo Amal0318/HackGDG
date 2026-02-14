@@ -1,0 +1,44 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-surface text-gray-900;
+  }
+}
+
+@layer utilities {
+  .focus-visible-ring {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2;
+  }
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  
+  body {
+    @apply bg-white;
+  }
+  
+  .print-break-inside-avoid {
+    page-break-inside: avoid;
+  }
+}
+
+@keyframes pulse-border {
+  0%, 100% {
+    border-color: theme('colors.danger');
+    opacity: 1;
+  }
+  50% {
+    border-color: theme('colors.danger');
+    opacity: 0.5;
+  }
+}
+
+.pulse-border {
+  animation: pulse-border 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}

@@ -1,2 +1,0 @@
-# Pathway streaming engine dependencies
-pathway

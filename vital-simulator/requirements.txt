@@ -1,3 +1,0 @@
-# Minimal dependencies for vital simulator
-asyncio
-python-kafka

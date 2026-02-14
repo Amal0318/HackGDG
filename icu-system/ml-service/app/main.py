@@ -28,6 +28,7 @@ from datetime import datetime
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from models.lstm_model import LSTMAttentionModel, LogisticRegressionFallback
+from app.kafka_consumer import start_ml_consumer, stop_ml_consumer
 
 # Configure logging
 logging.basicConfig(
@@ -132,8 +133,8 @@ class ModelInfo(BaseModel):
 def load_lstm_model():
     """Load trained LSTM model."""
     try:
-        model_path = "../training/saved_models/best_model.pth"
-        config_path = "../training/saved_models/feature_config.json"
+        model_path = "model.pth"
+        config_path = "feature_config.json"
         
         if not os.path.exists(model_path):
             logger.warning(f"LSTM model not found at {model_path}")
@@ -203,7 +204,7 @@ def load_fallback_model():
 def load_scaler():
     """Load feature scaler."""
     try:
-        scaler_path = "../training/saved_models/scaler.pkl"
+        scaler_path = "scaler.pkl"
         
         if os.path.exists(scaler_path):
             with open(scaler_path, 'rb') as f:
@@ -236,10 +237,26 @@ async def startup_event():
     
     if not state.model_loaded and not state.fallback_loaded:
         logger.error("❌ No models loaded! Service may not function correctly.")
+    else:
+        # Start Kafka consumer for real-time predictions
+        logger.info("Starting Kafka consumer for real-time predictions...")
+        try:
+            start_ml_consumer(predict_fn=lambda seq: predict_lstm(seq) if state.model_loaded else 0.0)
+            logger.info("✅ Kafka consumer started")
+        except Exception as e:
+            logger.error(f"❌ Failed to start Kafka consumer: {e}")
     
     logger.info("=" * 70)
     logger.info("ML Service Ready")
     logger.info("=" * 70)
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Cleanup on shutdown."""
+    logger.info("Shutting down ML Service...")
+    stop_ml_consumer()
+    logger.info("✅ ML Service stopped")
 
 
 # ==============================

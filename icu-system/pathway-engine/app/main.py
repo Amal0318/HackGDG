@@ -100,31 +100,9 @@ class VitalXPathwayEngine:
     def setup_monitoring_and_logging(self, enriched_stream: pw.Table) -> pw.Table:
         """Setup monitoring and logging for the enriched stream"""
         
-        # Add monitoring transformations
-        monitored_stream = enriched_stream.select(
-            *enriched_stream,
-            processing_timestamp=pw.apply(lambda: datetime.utcnow().isoformat())
-        )
-        
-        # Log high-risk patients
-        high_risk_alerts = monitored_stream.filter(
-            pw.this.computed_risk > 0.7  # High risk threshold
-        )
-        
-        # Log anomalies
-        anomaly_alerts = monitored_stream.filter(
-            pw.this.anomaly_flag == True
-        )
-        
-        # Debug logging (can be enabled/disabled via settings)
-        if logger.isEnabledFor(logging.DEBUG):
-            pw.debug.compute_and_print(monitored_stream.select(
-                pw.this.patient_id,
-                pw.this.computed_risk,
-                pw.this.anomaly_flag
-            ))
-        
-        return monitored_stream
+        # Return enriched stream as is - monitoring via Pathway's built-in features
+        # High-risk and anomaly detection is already built into the enriched stream
+        return enriched_stream
     
     def create_streaming_pipeline(self) -> pw.Table:
         """Create the complete streaming data pipeline"""

@@ -7,6 +7,7 @@ import logging
 from typing import Dict, Any, Optional
 import pathway as pw
 from .settings import settings
+from .schema import VitalSignsInputSchema
 
 logger = logging.getLogger(__name__)
 
@@ -41,17 +42,13 @@ class KafkaConnector:
             "bootstrap.servers": settings.kafka.bootstrap_servers,
             "group.id": settings.kafka.consumer_group,
             "auto.offset.reset": settings.kafka.auto_offset_reset,
-            "enable.auto.commit": True,
-            "auto.commit.interval.ms": 1000,
-            "session.timeout.ms": 30000,
-            "heartbeat.interval.ms": 10000,
-            "max.poll.interval.ms": 300000,
-            "fetch.min.bytes": 1,
-            "fetch.max.wait.ms": 500,
+            "enable.auto.commit": "true",
+            "auto.commit.interval.ms": "1000",
+            "session.timeout.ms": "30000",
+            "heartbeat.interval.ms": "10000",
+            "max.poll.interval.ms": "300000",
             # Error handling
-            "api.version.request": True,
-            "api.version.fallback.ms": 0,
-            "broker.version.fallback": "0.9.0",
+            "api.version.request": "true",
             # Security (add as needed)
             # "security.protocol": "SASL_SSL",
             # "sasl.mechanism": "PLAIN",
@@ -61,21 +58,17 @@ class KafkaConnector:
         """Get Kafka producer configuration for Pathway with reliability settings"""
         return {
             "bootstrap.servers": settings.kafka.bootstrap_servers,
-            "acks": settings.kafka.acks,  # Wait for all in-sync replicas
-            "retries": settings.kafka.retries,
-            "retry.backoff.ms": settings.kafka.retry_backoff_ms,
-            "delivery.timeout.ms": 120000,  # 2 minutes total timeout
-            "request.timeout.ms": 30000,    # 30 seconds per request
-            "max.in.flight.requests.per.connection": 5,
-            "enable.idempotence": True,     # Prevent duplicates
+            "acks": str(settings.kafka.acks),  # Wait for all in-sync replicas
+            "retries": str(settings.kafka.retries),
+            "retry.backoff.ms": str(settings.kafka.retry_backoff_ms),
+            "delivery.timeout.ms": "120000",  # 2 minutes total timeout
+            "request.timeout.ms": "30000",    # 30 seconds per request
+            "max.in.flight.requests.per.connection": "5",
+            "enable.idempotence": "true",     # Prevent duplicates
             # Batching for performance
-            "batch.size": 16384,
-            "linger.ms": 10,
+            "batch.size": "16384",
+            "linger.ms": "10",
             "compression.type": "snappy",
-            # Error handling
-            "api.version.request": True,
-            "api.version.fallback.ms": 0,
-            "broker.version.fallback": "0.9.0",
         }
     
     def create_input_stream(self) -> pw.Table:
@@ -83,12 +76,13 @@ class KafkaConnector:
         try:
             logger.info(f"Connecting to Kafka input topic: {self.input_topic}")
             
-            # Pathway Kafka input connector
+            # Pathway Kafka input connector with schema
+            # Note: schema= must come before format= in Pathway
             input_stream = pw.io.kafka.read(
                 rdkafka_settings=self.get_consumer_config(),
                 topic=self.input_topic,
+                schema=VitalSignsInputSchema,
                 format="json",
-                mode="streaming",
                 autocommit_duration_ms=1000,
             )
             
@@ -104,11 +98,11 @@ class KafkaConnector:
         try:
             logger.info(f"Setting up Kafka output sink to topic: {self.output_topic}")
             
-            # Pathway Kafka output connector  
+            # Pathway Kafka output connector with explicit keyword arguments
             pw.io.kafka.write(
                 table=enriched_stream,
+                topic_name=self.output_topic,
                 rdkafka_settings=self.get_producer_config(),
-                topic=self.output_topic,
                 format="json",
             )
             

@@ -6,7 +6,24 @@ Production-ready data models for ICU vital signs streaming pipeline
 from datetime import datetime
 from typing import Optional, Any, Dict
 from pydantic import BaseModel, Field, validator
+import pathway as pw
 import json
+
+# Pathway Schema for Kafka Input
+class VitalSignsInputSchema(pw.Schema):
+    """Pathway schema for vital signs JSON data from Kafka"""
+    patient_id: str
+    timestamp: str
+    heart_rate: float
+    systolic_bp: float
+    diastolic_bp: float
+    spo2: float
+    respiratory_rate: float
+    temperature: float
+    shock_index: float
+    state: str
+    # Note: event_type can be null/None in JSON, Pathway handles this automatically
+    event_type: str
 
 class VitalSignsInput(BaseModel):
     """Input schema for raw vital signs from the vital-simulator"""

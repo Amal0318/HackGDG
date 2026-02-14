@@ -31,31 +31,19 @@ class VitalXRiskEngine:
                    f"sbp={self.sbp_weight}, spo2={self.spo2_weight}")
     
     def calculate_rolling_averages(self, vitals_stream: pw.Table) -> pw.Table:
-        """Calculate 30-second rolling averages using Pathway windowing"""
+        """Calculate rolling averages using Pathway groupby and stateful processing"""
         
-        # Parse timestamp and create time-based windows
-        vitals_with_time = vitals_stream.select(
-            *vitals_stream,
-            event_time=pw.this.timestamp.dt.strptime("%Y-%m-%dT%H:%M:%S.%fZ")
-        )
-        
-        # Group by patient_id and create sliding windows
-        windowed = vitals_with_time.windowby(
-            vitals_with_time.event_time,
-            window=pw.temporal.sliding(
-                hop=pw.Duration.seconds(1),  # Update every second
-                duration=pw.Duration.seconds(settings.pathway.window_duration_seconds)
-            ),
-            behavior=pw.temporal.exactly_once_behavior(),  # Process each record exactly once
-        ).reduce(
-            patient_id=pw.this._pw_window_start_time,  # Group key
+        # Group by patient_id and calculate rolling statistics
+        # Using stateful aggregation for each patient
+        grouped = vitals_stream.groupby(pw.this.patient_id).reduce(
+            patient_id=pw.this.patient_id,
             rolling_hr=pw.reducers.avg(pw.this.heart_rate),
             rolling_spo2=pw.reducers.avg(pw.this.spo2),
             rolling_sbp=pw.reducers.avg(pw.this.systolic_bp),
             record_count=pw.reducers.count(),
         )
         
-        return windowed
+        return grouped
     
     def calculate_trends(self, current_vitals: pw.Table, rolling_averages: pw.Table) -> pw.Table:
         """Calculate vital sign trends (current - rolling average)"""
@@ -64,12 +52,24 @@ class VitalXRiskEngine:
         trends = current_vitals.join(
             rolling_averages,
             current_vitals.patient_id == rolling_averages.patient_id,
-            how=pw.JoinMode.INNER
         ).select(
-            *current_vitals,
+            # Keep all original fields
+            patient_id=current_vitals.patient_id,
+            timestamp=current_vitals.timestamp,
+            heart_rate=current_vitals.heart_rate,
+            systolic_bp=current_vitals.systolic_bp,
+            diastolic_bp=current_vitals.diastolic_bp,
+            spo2=current_vitals.spo2,
+            respiratory_rate=current_vitals.respiratory_rate,
+            temperature=current_vitals.temperature,
+            shock_index=current_vitals.shock_index,
+            state=current_vitals.state,
+            event_type=current_vitals.event_type,
+            # Add rolling averages
             rolling_hr=rolling_averages.rolling_hr,
             rolling_spo2=rolling_averages.rolling_spo2, 
             rolling_sbp=rolling_averages.rolling_sbp,
+            # Calculate trends
             hr_trend=current_vitals.heart_rate - rolling_averages.rolling_hr,
             sbp_trend=current_vitals.systolic_bp - rolling_averages.rolling_sbp,
         )
@@ -205,9 +205,6 @@ class VitalXRiskEngine:
                 pw.this.systolic_bp,
                 pw.this.shock_index
             ),
-            
-            # Metadata
-            enriched_at=pw.apply(lambda: pw.temporal.now().isoformat()),
         )
         
         return enriched

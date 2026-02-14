@@ -1,0 +1,55 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Data files (large)
+*.csv
+*.jsonl
+*.npy
+data/*.npy
+data/*.csv
+data/*.jsonl
+
+# Model files (large)
+saved_models/*.pth
+saved_models/*.pkl
+training/saved_models/*.pth
+training/saved_models/*.pkl
+
+# Keep config files
+!saved_models/*.json
+!training/saved_models/*.json
+
+# Logs
+*.log
+logs/*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Test outputs
+test_outputs/
+
+# Temporary files
+*.tmp
+temp/

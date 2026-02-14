@@ -1,3 +1,31 @@
-# FastAPI ML inference service dependencies
+# ========================================
+# VitalX ML Service Dependencies
+# ========================================
+
+# Deep Learning Framework
+torch>=2.0.0
+torchvision>=0.15.0
+
+# Scientific Computing
+numpy>=1.24.0
+pandas>=2.0.0
+scipy>=1.10.0
+
+# Machine Learning
+scikit-learn>=1.3.0
+
+# Visualization
+matplotlib>=3.7.0
+seaborn>=0.12.0
+
+# Data Processing
+jupyter>=1.0.0
+
+# FastAPI ML inference service
 fastapi==0.104.1
 uvicorn==0.24.0
+pydantic>=2.0.0
+
+# Utilities
+tqdm>=4.65.0
+python-dateutil>=2.8.0

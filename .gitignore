@@ -1,0 +1,60 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# PyCharm
+.idea/
+
+# VS Code
+.vscode/
+
+# Model artifacts (temporary/intermediate files)
+*.npy
+lstm_model.pth
+X_*.npy
+y_*.npy
+
+# Test files
+test_*.py
+*_test.py
+TRY.py
+quick_test.py
+simple_test.py
+
+# Training utilities (not needed in production)
+monitor_training.py
+evaluate_finetuned.py
+verify_model.py
+generate_icu_dataset.py
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

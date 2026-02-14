@@ -5,6 +5,7 @@ Consumes enriched vitals from Pathway and makes real-time predictions
 
 import json
 import logging
+import os
 import threading
 import time
 from collections import defaultdict, deque
@@ -73,7 +74,7 @@ class MLKafkaConsumer:
     
     def __init__(
         self,
-        bootstrap_servers='kafka:29092',
+        bootstrap_servers='kafka:9092',
         input_topic='vitals_enriched',
         output_topic='vitals_predictions',
         group_id='ml-service-consumer'
@@ -99,31 +100,49 @@ class MLKafkaConsumer:
         self.predict_fn = predict_fn
         
     def connect(self):
-        """Connect to Kafka"""
-        try:
-            self.consumer = KafkaConsumer(
-                self.input_topic,
-                bootstrap_servers=self.bootstrap_servers,
-                group_id=self.group_id,
-                value_deserializer=lambda m: json.loads(m.decode('utf-8')),
-                auto_offset_reset='latest',
-                enable_auto_commit=True,
-                consumer_timeout_ms=1000
-            )
-            
-            self.producer = KafkaProducer(
-                bootstrap_servers=self.bootstrap_servers,
-                value_serializer=lambda v: json.dumps(v).encode('utf-8')
-            )
-            
-            logger.info(f"✅ Connected to Kafka at {self.bootstrap_servers}")
-            logger.info(f"📥 Consuming from topic: {self.input_topic}")
-            logger.info(f"📤 Publishing predictions to: {self.output_topic}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to connect to Kafka: {e}")
-            return False
+        """Connect to Kafka with retry logic for production reliability"""
+        import time
+        
+        max_retries = 10
+        retry_delay = 5  # seconds
+        
+        for attempt in range(1, max_retries + 1):
+            try:
+                logger.info(f"🔄 Connecting to Kafka at {self.bootstrap_servers} (attempt {attempt}/{max_retries})...")
+                
+                self.consumer = KafkaConsumer(
+                    self.input_topic,
+                    bootstrap_servers=self.bootstrap_servers,
+                    group_id=self.group_id,
+                    value_deserializer=lambda m: json.loads(m.decode('utf-8')),
+                    auto_offset_reset='latest',
+                    enable_auto_commit=True,
+                    consumer_timeout_ms=1000,
+                    api_version=(0, 10, 1)  # Compatible version
+                )
+                
+                self.producer = KafkaProducer(
+                    bootstrap_servers=self.bootstrap_servers,
+                    value_serializer=lambda v: json.dumps(v).encode('utf-8'),
+                    api_version=(0, 10, 1)
+                )
+                
+                logger.info(f"✅ Connected to Kafka at {self.bootstrap_servers}")
+                logger.info(f"📥 Consuming from topic: {self.input_topic}")
+                logger.info(f"📤 Publishing predictions to: {self.output_topic}")
+                return True
+                
+            except Exception as e:
+                logger.warning(f"⚠️  Kafka connection attempt {attempt} failed: {e}")
+                
+                if attempt < max_retries:
+                    logger.info(f"⏳ Retrying in {retry_delay} seconds...")
+                    time.sleep(retry_delay)
+                else:
+                    logger.error(f"❌ Failed to connect to Kafka after {max_retries} attempts")
+                    return False
+        
+        return False
     
     def process_message(self, message):
         """Process a single Kafka message"""
@@ -252,9 +271,12 @@ def start_ml_consumer(predict_fn):
     """Start the ML Kafka consumer with a prediction function"""
     global ml_consumer
     
+    # Get bootstrap servers from environment or use default
+    bootstrap_servers = os.getenv('KAFKA_BOOTSTRAP_SERVERS', 'kafka:9092')
+    
     if ml_consumer is None:
         ml_consumer = MLKafkaConsumer(
-            bootstrap_servers='kafka:29092',
+            bootstrap_servers=bootstrap_servers,
             input_topic='vitals_enriched',
             output_topic='vitals_predictions'
         )

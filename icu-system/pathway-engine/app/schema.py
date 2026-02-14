@@ -1,6 +1,8 @@
 """
 VitalX Pathway Engine Data Schemas
 Production-ready data models for ICU vital signs streaming pipeline
+
+CRITICAL: This schema enforces strict typing to prevent topic explosion
 """
 
 from datetime import datetime
@@ -9,9 +11,23 @@ from pydantic import BaseModel, Field, validator
 import pathway as pw
 import json
 
-# Pathway Schema for Kafka Input
-class VitalSignsInputSchema(pw.Schema):
-    """Pathway schema for vital signs JSON data from Kafka"""
+# =========================================================
+# PRODUCTION-GRADE PATHWAY SCHEMA
+# =========================================================
+# This schema definition is critical for preventing Kafka
+# topic explosion by enforcing strict data typing and
+# proper deserialization from Kafka JSON messages.
+# =========================================================
+
+class VitalSchema(pw.Schema):
+    """
+    Strict Pathway schema for vital signs streaming from Kafka.
+    
+    This schema defines the exact structure of incoming vital sign
+    records and enables Pathway's type-safe streaming operations.
+    
+    Used for: vitals → Kafka → Pathway ingestion
+    """
     patient_id: str
     timestamp: str
     heart_rate: float
@@ -22,8 +38,11 @@ class VitalSignsInputSchema(pw.Schema):
     temperature: float
     shock_index: float
     state: str
-    # Note: event_type can be null/None in JSON, Pathway handles this automatically
     event_type: str
+
+
+# Alias for backward compatibility
+VitalSignsInputSchema = VitalSchema
 
 class VitalSignsInput(BaseModel):
     """Input schema for raw vital signs from the vital-simulator"""

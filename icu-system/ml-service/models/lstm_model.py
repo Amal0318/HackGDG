@@ -6,6 +6,18 @@ import torch
 import torch.nn as nn
 
 
+class AttentionLayer(nn.Module):
+    """Attention mechanism wrapper"""
+    def __init__(self, hidden_size):
+        super(AttentionLayer, self).__init__()
+        self.attention = nn.Linear(hidden_size, 1)
+    
+    def forward(self, lstm_out):
+        attention_weights = torch.softmax(self.attention(lstm_out), dim=1)
+        context = torch.sum(attention_weights * lstm_out, dim=1)
+        return context
+
+
 class LSTMAttentionModel(nn.Module):
     """
     LSTM with Attention for ICU Patient Deterioration Prediction
@@ -34,13 +46,13 @@ class LSTMAttentionModel(nn.Module):
             batch_first=True
         )
         
-        # Attention mechanism
-        self.attention = nn.Linear(hidden_size, 1)
+        # Attention mechanism (nested structure to match saved model)
+        self.attention = AttentionLayer(hidden_size)
         
         # Fully connected layers
         self.fc1 = nn.Linear(hidden_size, 64)
         self.fc2 = nn.Linear(64, 32)
-        self.fc3 = nn.Linear(32, 1)
+        self.fc_out = nn.Linear(32, 1)  # Changed from fc3 to fc_out
         
         # Activation and regularization
         self.relu = nn.ReLU()
@@ -63,11 +75,7 @@ class LSTMAttentionModel(nn.Module):
         # lstm_out shape: (batch_size, sequence_length, hidden_size)
         
         # Attention mechanism
-        attention_weights = torch.softmax(self.attention(lstm_out), dim=1)
-        # attention_weights shape: (batch_size, sequence_length, 1)
-        
-        # Apply attention
-        context = torch.sum(attention_weights * lstm_out, dim=1)
+        context = self.attention(lstm_out)
         # context shape: (batch_size, hidden_size)
         
         # Fully connected layers
@@ -79,7 +87,7 @@ class LSTMAttentionModel(nn.Module):
         out = self.relu(out)
         out = self.dropout2(out)
         
-        out = self.fc3(out)
+        out = self.fc_out(out)  # Changed from fc3 to fc_out
         out = self.sigmoid(out)
         
         return out

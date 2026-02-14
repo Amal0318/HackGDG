@@ -202,21 +202,27 @@ def load_fallback_model():
 
 
 def load_scaler():
-    """Load feature scaler."""
+    """Load feature scaler with robust error handling."""
+    import joblib
+    
+    scaler_path = "scaler.pkl"
+    
+    if not os.path.exists(scaler_path):
+        logger.warning("⚠️  Scaler file not found at scaler.pkl")
+        state.scaler = None
+        logger.warning("⚠️  Continuing without scaler (accuracy may degrade)")
+        return False
+    
     try:
-        scaler_path = "scaler.pkl"
+        # Use joblib for scikit-learn compatibility
+        state.scaler = joblib.load(scaler_path)
+        logger.info("✅ Feature scaler loaded successfully")
+        return True
         
-        if os.path.exists(scaler_path):
-            with open(scaler_path, 'rb') as f:
-                state.scaler = pickle.load(f)
-            logger.info("✅ Feature scaler loaded")
-            return True
-        else:
-            logger.warning("⚠️  No scaler found, using raw features")
-            return False
-            
     except Exception as e:
         logger.error(f"❌ Failed to load scaler: {e}")
+        state.scaler = None
+        logger.warning("⚠️  Continuing without scaler (accuracy may degrade)")
         return False
 
 
@@ -288,7 +294,7 @@ def predict_lstm(sequence: np.ndarray) -> float:
     
     # Predict
     with torch.no_grad():
-        output, _ = state.lstm_model(X)
+        output = state.lstm_model(X)
     
     risk_score = output.item()
     return risk_score

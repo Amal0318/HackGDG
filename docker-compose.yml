@@ -39,7 +39,7 @@ services:
   # Isolated service that produces patient monitoring data streams
   vital-simulator:
     build:
-      context: ./vital-simulator
+      context: ./icu-system/vital-simulator
       dockerfile: Dockerfile
     container_name: icu-vital-simulator
     depends_on:
@@ -54,7 +54,7 @@ services:
   # Isolated service for temporal data analysis and transformation
   pathway-engine:
     build:
-      context: ./pathway-engine
+      context: ./icu-system/pathway-engine
       dockerfile: Dockerfile
     container_name: icu-pathway-engine
     depends_on:
@@ -69,7 +69,7 @@ services:
   # Isolated service providing deterioration prediction capabilities
   ml-service:
     build:
-      context: ./ml-service
+      context: ./icu-system/ml-service
       dockerfile: Dockerfile
     container_name: icu-ml-service
     ports:
@@ -84,7 +84,7 @@ services:
   # Isolated service providing external interface and orchestration
   backend-api:
     build:
-      context: ./backend-api
+      context: ./icu-system/backend-api
       dockerfile: Dockerfile
     container_name: icu-backend-api
     ports:

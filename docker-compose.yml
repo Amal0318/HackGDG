@@ -1,0 +1,107 @@
+version: '3.8'
+
+services:
+  # Zookeeper - Required dependency for Kafka broker coordination
+  # Manages Kafka cluster metadata and leader election
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    hostname: zookeeper
+    container_name: icu-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - icu-network
+
+  # Kafka - Message broker for real-time data streaming
+  # Enables decoupled communication between ICU data sources and processing services
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    hostname: kafka
+    container_name: icu-kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+    networks:
+      - icu-network
+
+  # Vital Simulator - Generates synthetic ICU telemetry data
+  # Isolated service that produces patient monitoring data streams
+  vital-simulator:
+    build:
+      context: ./vital-simulator
+      dockerfile: Dockerfile
+    container_name: icu-vital-simulator
+    depends_on:
+      - kafka
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+    networks:
+      - icu-network
+    restart: unless-stopped
+
+  # Pathway Engine - Real-time streaming data processor
+  # Isolated service for temporal data analysis and transformation
+  pathway-engine:
+    build:
+      context: ./pathway-engine
+      dockerfile: Dockerfile
+    container_name: icu-pathway-engine
+    depends_on:
+      - kafka
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+    networks:
+      - icu-network
+    restart: unless-stopped
+
+  # ML Service - Machine learning inference engine
+  # Isolated service providing deterioration prediction capabilities
+  ml-service:
+    build:
+      context: ./ml-service
+      dockerfile: Dockerfile
+    container_name: icu-ml-service
+    ports:
+      - "8001:8000"
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+    networks:
+      - icu-network
+    restart: unless-stopped
+
+  # Backend API - REST + WebSocket API gateway
+  # Isolated service providing external interface and orchestration
+  backend-api:
+    build:
+      context: ./backend-api
+      dockerfile: Dockerfile
+    container_name: icu-backend-api
+    ports:
+      - "8000:8000"
+    depends_on:
+      - kafka
+      - ml-service
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - ML_SERVICE_URL=http://ml-service:8000
+    networks:
+      - icu-network
+    restart: unless-stopped
+
+# Shared network for service communication
+# Enables secure inter-service communication without exposing internal ports
+networks:
+  icu-network:
+    driver: bridge
+    name: icu-network

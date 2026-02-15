@@ -1,4 +1,4 @@
-# ICU Digital Twin System
+VitalX
 
 Real-Time ICU Digital Twin & Deterioration Prediction System using microservice architecture.
 

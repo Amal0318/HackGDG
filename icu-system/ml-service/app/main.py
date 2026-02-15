@@ -204,6 +204,8 @@ def load_fallback_model():
 def load_scaler():
     """Load feature scaler with robust error handling."""
     import joblib
+    import pickle
+    import numpy as np
     
     scaler_path = "scaler.pkl"
     
@@ -214,7 +216,12 @@ def load_scaler():
         return False
     
     try:
-        # Use joblib for scikit-learn compatibility
+        # Fix for NumPy 2.0+ compatibility
+        # Add missing ComplexWarning attribute if it doesn't exist
+        if not hasattr(np, 'ComplexWarning'):
+            np.ComplexWarning = np.VisibleDeprecationWarning
+            
+        # Try loading with joblib
         state.scaler = joblib.load(scaler_path)
         logger.info("✅ Feature scaler loaded successfully")
         return True
@@ -246,11 +253,15 @@ async def startup_event():
     else:
         # Start Kafka consumer for real-time predictions
         logger.info("Starting Kafka consumer for real-time predictions...")
+        logger.info(f"LSTM model loaded: {state.model_loaded}")
+        logger.info(f"Model device: {state.device}")
         try:
-            start_ml_consumer(predict_fn=lambda seq: predict_lstm(seq) if state.model_loaded else 0.0)
+            predict_fn = lambda seq: predict_lstm(seq) if state.model_loaded else 0.0
+            logger.info(f"Created predictor function (will use LSTM: {state.model_loaded})")
+            start_ml_consumer(predict_fn=predict_fn)
             logger.info("✅ Kafka consumer started")
         except Exception as e:
-            logger.error(f"❌ Failed to start Kafka consumer: {e}")
+            logger.error(f"❌ Failed to start Kafka consumer: {e}", exc_info=True)
     
     logger.info("=" * 70)
     logger.info("ML Service Ready")
@@ -289,14 +300,37 @@ def classify_risk(risk_score: float) -> str:
 
 def predict_lstm(sequence: np.ndarray) -> float:
     """Predict using LSTM model."""
+    logger.info(f"🔍 predict_lstm called with sequence shape: {sequence.shape}")
+    logger.info(f"🔍 Sequence stats - min: {sequence.min():.4f}, max: {sequence.max():.4f}, mean: {sequence.mean():.4f}")
+    
+    # Apply scaling if scaler is available
+    if state.scaler is not None:
+        # Reshape for scaling: (60, 14) -> (60*14,) -> scale -> (60, 14)
+        original_shape = sequence.shape
+        sequence_flat = sequence.reshape(-1, sequence.shape[-1])
+        sequence_scaled = state.scaler.transform(sequence_flat)
+        sequence = sequence_scaled.reshape(original_shape)
+        logger.debug(f"Scaled sequence range: [{sequence.min():.4f}, {sequence.max():.4f}]")
+    else:
+        logger.warning("⚠️ No scaler available - using raw values")
+    
     # Convert to tensor
     X = torch.FloatTensor(sequence).unsqueeze(0).to(state.device)  # (1, 60, 14)
+    logger.info(f"🔍 Tensor shape: {X.shape}, device: {X.device}")
     
     # Predict
     with torch.no_grad():
         output = state.lstm_model(X)
     
     risk_score = output.item()
+    logger.info(f"🎯 Raw LSTM output: {risk_score:.8f}")
+    
+    # Ensure output is in valid range and apply sigmoid if needed
+    if risk_score < 0 or risk_score > 1:
+        logger.warning(f"⚠️ Risk score {risk_score} out of range, applying sigmoid")
+        risk_score = torch.sigmoid(torch.tensor(risk_score)).item()
+        logger.info(f"🎯 After sigmoid: {risk_score:.8f}")
+    
     return risk_score
 
 

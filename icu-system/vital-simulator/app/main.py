@@ -110,8 +110,116 @@ class Patient:
         
         # State transition (minimal duration before transitions)
         self.min_state_duration = 30
+
+        # Scripted gradual deterioration spike state (controlled by simulator scheduler)
+        self.scripted_spike_active = False
+        self.scripted_spike_phase = "idle"
+        self.scripted_spike_timer = 0
+        self.scripted_spike_ramp_up = 0
+        self.scripted_spike_hold = 0
+        self.scripted_spike_ramp_down = 0
+        self.scripted_spike_deltas = {
+            "heart_rate": 0.0,
+            "systolic_bp": 0.0,
+            "spo2": 0.0,
+            "respiratory_rate": 0.0,
+            "temperature": 0.0,
+        }
         
         logger.info(f"Initialized patient {patient_id} with baseline HR:{self.baseline_hr:.1f}, SBP:{self.baseline_sbp:.1f}")
+
+    def has_scripted_spike_active(self) -> bool:
+        """Return whether the patient is currently in a scripted spike episode."""
+        return self.scripted_spike_active
+
+    def start_scripted_spike(
+        self,
+        ramp_up_seconds: int,
+        hold_seconds: int,
+        ramp_down_seconds: int,
+        deltas: Dict[str, float]
+    ) -> bool:
+        """Start a gradual, deterministic spike profile for this patient."""
+        if self.scripted_spike_active:
+            return False
+
+        self.scripted_spike_active = True
+        self.scripted_spike_phase = "ramp_up"
+        self.scripted_spike_timer = 0
+        self.scripted_spike_ramp_up = max(1, ramp_up_seconds)
+        self.scripted_spike_hold = max(1, hold_seconds)
+        self.scripted_spike_ramp_down = max(1, ramp_down_seconds)
+        self.scripted_spike_deltas = {
+            "heart_rate": float(deltas.get("heart_rate", 0.0)),
+            "systolic_bp": float(deltas.get("systolic_bp", 0.0)),
+            "spo2": float(deltas.get("spo2", 0.0)),
+            "respiratory_rate": float(deltas.get("respiratory_rate", 0.0)),
+            "temperature": float(deltas.get("temperature", 0.0)),
+        }
+
+        # Nudge trajectory so the ML pipeline sees a meaningful trend quickly
+        if self.state == PatientState.STABLE:
+            self.state = PatientState.EARLY_DETERIORATION
+            self.state_duration = 0
+
+        logger.warning(
+            f"Patient {self.patient_id}: SCRIPTED SPIKE STARTED "
+            f"(ramp_up={self.scripted_spike_ramp_up}s, hold={self.scripted_spike_hold}s, "
+            f"ramp_down={self.scripted_spike_ramp_down}s, deltas={self.scripted_spike_deltas})"
+        )
+        return True
+
+    def _scripted_spike_intensity(self) -> float:
+        """Current spike intensity in range [0, 1], evolves gradually by phase."""
+        if not self.scripted_spike_active:
+            return 0.0
+
+        if self.scripted_spike_phase == "ramp_up":
+            return min(1.0, self.scripted_spike_timer / max(1, self.scripted_spike_ramp_up))
+        if self.scripted_spike_phase == "hold":
+            return 1.0
+        if self.scripted_spike_phase == "ramp_down":
+            remaining = max(0, self.scripted_spike_ramp_down - self.scripted_spike_timer)
+            return max(0.0, remaining / max(1, self.scripted_spike_ramp_down))
+        return 0.0
+
+    def _tick_scripted_spike(self) -> None:
+        """Advance scripted spike phase machine by one second."""
+        if not self.scripted_spike_active:
+            return
+
+        self.scripted_spike_timer += 1
+
+        if self.scripted_spike_phase == "ramp_up" and self.scripted_spike_timer >= self.scripted_spike_ramp_up:
+            self.scripted_spike_phase = "hold"
+            self.scripted_spike_timer = 0
+            return
+
+        if self.scripted_spike_phase == "hold" and self.scripted_spike_timer >= self.scripted_spike_hold:
+            self.scripted_spike_phase = "ramp_down"
+            self.scripted_spike_timer = 0
+            return
+
+        if self.scripted_spike_phase == "ramp_down" and self.scripted_spike_timer >= self.scripted_spike_ramp_down:
+            self.scripted_spike_active = False
+            self.scripted_spike_phase = "idle"
+            self.scripted_spike_timer = 0
+            logger.info(f"Patient {self.patient_id}: SCRIPTED SPIKE COMPLETED")
+
+    def _apply_scripted_spike_modifiers(self, vitals: VitalSigns) -> VitalSigns:
+        """Apply gradual spike deltas to produce a trend-like deterioration curve."""
+        intensity = self._scripted_spike_intensity()
+        if intensity <= 0:
+            return vitals
+
+        return VitalSigns(
+            heart_rate=vitals.heart_rate + (self.scripted_spike_deltas["heart_rate"] * intensity),
+            systolic_bp=vitals.systolic_bp - (self.scripted_spike_deltas["systolic_bp"] * intensity),
+            diastolic_bp=vitals.diastolic_bp,
+            spo2=vitals.spo2 - (self.scripted_spike_deltas["spo2"] * intensity),
+            respiratory_rate=vitals.respiratory_rate + (self.scripted_spike_deltas["respiratory_rate"] * intensity),
+            temperature=vitals.temperature + (self.scripted_spike_deltas["temperature"] * intensity)
+        )
     
     def _initialize_stable_vitals(self) -> VitalSigns:
         """Initialize patient with individual baseline vitals"""
@@ -625,9 +733,12 @@ class Patient:
         
         # 2. Apply acute event modifiers
         modified_vitals = self.apply_acute_event_modifiers(baseline_vitals)
+
+        # 2b. Apply scripted gradual spike modifiers (if active)
+        trended_vitals = self._apply_scripted_spike_modifiers(modified_vitals)
         
         # 3. Apply physiological correlations
-        correlated_vitals = self._apply_physiological_correlations(modified_vitals, self.state)
+        correlated_vitals = self._apply_physiological_correlations(trended_vitals, self.state)
         
         # 4. Clamp to safe ranges
         final_vitals = self._clamp_vitals(correlated_vitals)
@@ -637,6 +748,9 @@ class Patient:
         
         # 6. Update acute event status
         self._update_acute_event_status()
+
+        # 7. Advance scripted spike state machine
+        self._tick_scripted_spike()
         
         # === VALIDATION ===
         self._validate_vitals(final_vitals, prev_vitals)
@@ -676,6 +790,17 @@ class VitalSimulator:
         self.running = False
         self.debug_mode = DEBUG_MODE
         self.event_count = 0
+
+        # Predictable-random gradual spike scheduler configuration
+        self.scripted_spike_enabled = os.getenv('SCRIPTED_SPIKE_ENABLED', 'true').lower() == 'true'
+        self.scripted_spike_seed = int(os.getenv('SCRIPTED_SPIKE_SEED', '2026'))
+        self.scripted_spike_min_cycle = int(os.getenv('SCRIPTED_SPIKE_MIN_CYCLE_SECONDS', '300'))
+        self.scripted_spike_max_cycle = int(os.getenv('SCRIPTED_SPIKE_MAX_CYCLE_SECONDS', '480'))
+        self.scripted_spike_ramp_up = int(os.getenv('SCRIPTED_SPIKE_RAMP_UP_SECONDS', '120'))
+        self.scripted_spike_hold = int(os.getenv('SCRIPTED_SPIKE_HOLD_SECONDS', '45'))
+        self.scripted_spike_ramp_down = int(os.getenv('SCRIPTED_SPIKE_RAMP_DOWN_SECONDS', '120'))
+        self.scripted_spike_rng = random.Random(self.scripted_spike_seed)
+        self._scripted_spike_task: Optional[asyncio.Task] = None
         
         # PART 8: Realism validation counters
         self.total_simulation_time = 0
@@ -685,6 +810,70 @@ class VitalSimulator:
             logger.info("🔧 DEBUG MODE ENABLED - Events will be printed to console instead of Kafka")
         else:
             logger.info(f"Initialized with Kafka servers: {self.kafka_servers}")
+
+        if self.scripted_spike_enabled:
+            logger.info(
+                "🎯 Scripted gradual spikes ENABLED "
+                f"(seed={self.scripted_spike_seed}, cycle={self.scripted_spike_min_cycle}-{self.scripted_spike_max_cycle}s, "
+                f"shape={self.scripted_spike_ramp_up}/{self.scripted_spike_hold}/{self.scripted_spike_ramp_down}s)"
+            )
+        else:
+            logger.info("🎯 Scripted gradual spikes DISABLED")
+
+    async def _scripted_spike_scheduler_loop(self) -> None:
+        """Pick a random patient on a deterministic schedule and trigger gradual spikes."""
+        if not self.scripted_spike_enabled:
+            return
+
+        # Initial short delay so baseline histories populate first
+        next_trigger_in = self.scripted_spike_rng.randint(45, 90)
+
+        while self.running:
+            try:
+                await asyncio.sleep(1)
+
+                if next_trigger_in > 0:
+                    next_trigger_in -= 1
+                    continue
+
+                # Avoid overlapping scripted spikes
+                if any(patient.has_scripted_spike_active() for patient in self.patients.values()):
+                    next_trigger_in = 5
+                    continue
+
+                target_patient = self.scripted_spike_rng.choice(list(self.patients.values()))
+                deltas = {
+                    "heart_rate": self.scripted_spike_rng.uniform(24.0, 42.0),
+                    "systolic_bp": self.scripted_spike_rng.uniform(16.0, 30.0),
+                    "spo2": self.scripted_spike_rng.uniform(2.5, 6.5),
+                    "respiratory_rate": self.scripted_spike_rng.uniform(4.0, 10.0),
+                    "temperature": self.scripted_spike_rng.uniform(0.4, 1.1),
+                }
+
+                started = target_patient.start_scripted_spike(
+                    ramp_up_seconds=self.scripted_spike_ramp_up,
+                    hold_seconds=self.scripted_spike_hold,
+                    ramp_down_seconds=self.scripted_spike_ramp_down,
+                    deltas=deltas,
+                )
+
+                if started:
+                    logger.warning(
+                        f"🎯 Scheduled gradual spike assigned to {target_patient.patient_id}; "
+                        "risk should show ramp-up trend instead of abrupt jump"
+                    )
+
+                next_trigger_in = self.scripted_spike_rng.randint(
+                    max(60, self.scripted_spike_min_cycle),
+                    max(max(60, self.scripted_spike_min_cycle), self.scripted_spike_max_cycle)
+                )
+
+            except asyncio.CancelledError:
+                logger.info("Scripted spike scheduler cancelled")
+                break
+            except Exception as exc:
+                logger.error(f"Error in scripted spike scheduler: {exc}")
+                next_trigger_in = 10
     
     def _setup_kafka_producer(self) -> Optional[KafkaProducer]:
         """Initialize Kafka producer with error handling"""
@@ -820,6 +1009,11 @@ class VitalSimulator:
         
         # Start patient simulation tasks
         tasks = []
+
+        if self.scripted_spike_enabled:
+            self._scripted_spike_task = asyncio.create_task(self._scripted_spike_scheduler_loop())
+            tasks.append(self._scripted_spike_task)
+
         for patient in self.patients.values():
             task = asyncio.create_task(self._patient_simulation_loop(patient))
             tasks.append(task)

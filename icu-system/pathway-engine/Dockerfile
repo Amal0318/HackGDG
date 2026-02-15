@@ -36,6 +36,7 @@ RUN apt-get update && apt-get install -y \
     libstdc++6 \
     curl \
     ca-certificates \
+    procps \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
@@ -68,13 +69,6 @@ ENV PYTHONPATH=/app \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
-
-# Health check for container orchestration
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:8080/health || exit 1
-
-# Expose monitoring port (Pathway HTTP server)
-EXPOSE 8080
 
 # Production command to start VitalX Pathway Engine
 CMD ["python", "-m", "app.main"]

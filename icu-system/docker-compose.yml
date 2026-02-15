@@ -80,6 +80,11 @@ services:
     container_name: icu-ml-service
     ports:
       - "8001:8000"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
     networks:
       - icu-network
     restart: unless-stopped
@@ -96,6 +101,42 @@ services:
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       ML_SERVICE_URL: http://ml-service:8000
+    networks:
+      - icu-network
+    restart: unless-stopped
+
+  alert-system:
+    build:
+      context: ./alert-system
+    container_name: icu-alert-system
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      LLM_PROVIDER: gemini
+      GEMINI_MODEL: gemini-2.5-flash
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      ENABLE_EMAIL_ALERTS: ${ENABLE_EMAIL_ALERTS:-true}
+      SMTP_SERVER: ${SMTP_SERVER:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      ALERT_EMAIL_FROM: ${ALERT_EMAIL_FROM:-icu-alerts@hospital.com}
+      ALERT_EMAIL_TO: ${ALERT_EMAIL_TO}
+      BACKEND_API_URL: http://backend-api:8000
+    networks:
+      - icu-network
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ../frontend
+    container_name: icu-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend-api
     networks:
       - icu-network
     restart: unless-stopped

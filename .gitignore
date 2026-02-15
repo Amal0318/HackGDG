@@ -57,4 +57,16 @@ generate_icu_dataset.py
 Thumbs.db
 
 # Logs
-*.log
+*.loglogs/
+icu-system/logs/*.log
+
+# Environment files (use .env.example instead)
+.env
+.env.local
+.env.*.local
+
+# Helper scripts (Windows-specific)
+*.bat
+
+# Temporary test files
+ready.txt

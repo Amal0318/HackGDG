@@ -2,14 +2,14 @@ import { Fragment } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
 import { X, Printer, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { format } from 'date-fns';
-import { Patient } from '../mockData';
+import { Patient as MockPatient } from '../mockData';
 import RiskBadge from './RiskBadge';
 import clsx from 'clsx';
 
 interface ShiftHandoffModalProps {
   isOpen: boolean;
   onClose: () => void;
-  patients: Patient[];
+  patients: MockPatient[];
   nurseName: string;
   shift: 'day' | 'night';
   floor: number;

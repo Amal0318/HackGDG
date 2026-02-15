@@ -1,5 +1,6 @@
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { LineChart, Line, ResponsiveContainer } from 'recharts';
+import { motion } from 'framer-motion';
 import clsx from 'clsx';
 
 interface VitalSignProps {
@@ -49,13 +50,19 @@ export default function VitalSign({
         {label}
       </span>
       <div className="flex items-baseline gap-2">
-        <span className={clsx(
-          'text-2xl font-bold font-mono transition-colors duration-300',
-          statusColors[status],
-          status !== 'normal' && 'animate-pulse'
-        )}>
+        <motion.span 
+          key={value}
+          initial={{ scale: 1.2, color: '#3B82F6' }}
+          animate={{ scale: 1, color: 'inherit' }}
+          transition={{ duration: 0.3 }}
+          className={clsx(
+            'text-2xl font-bold font-mono transition-colors duration-300',
+            statusColors[status],
+            status !== 'normal' && 'animate-pulse'
+          )}
+        >
           {value}
-        </span>
+        </motion.span>
         <span className="text-xs text-gray-500 font-medium">
           {unit}
         </span>

@@ -99,9 +99,23 @@ services:
       - icu-network
     restart: unless-stopped
 
+  # Frontend - React web application
+  # User interface for ICU monitoring dashboard
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: icu-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend-api
+    networks:
+      - icu-network
+    restart: unless-stopped
+
 # Shared network for service communication
 # Enables secure inter-service communication without exposing internal ports
 networks:
   icu-network:
     driver: bridge
-    name: icu-network

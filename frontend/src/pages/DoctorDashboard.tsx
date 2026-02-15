@@ -1,45 +1,89 @@
-import { useState } from 'react';
-import { Search } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { Search, Activity } from 'lucide-react';
 import { motion } from 'framer-motion';
 import clsx from 'clsx';
-import { patients, getPatientsByFloor, getPatientsByDoctor, getFloorStats } from '../mockData';
+import { usePatients, Patient } from '../hooks/usePatients';
 import PatientCard from '../components/PatientCard';
 import PatientDetailDrawer from '../components/PatientDetailDrawer';
 import RiskBadge from '../components/RiskBadge';
+import { usePatientRiskHistory } from '../hooks/usePatientRiskHistory';
 
 type SortType = 'risk' | 'floor' | 'name';
 
 export default function DoctorDashboard() {
   const [selectedFloor, setSelectedFloor] = useState<number | 'all'>('all');
-  const [selectedPatient, setSelectedPatient] = useState<typeof patients[0] | null>(null);
+  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [sortBy, setSortBy] = useState<SortType>('risk');
   const [searchQuery, setSearchQuery] = useState('');
 
-  const doctorName = 'Dr. Anderson';
-  const myPatients = getPatientsByDoctor(doctorName);
-
-  const displayPatients = selectedFloor === 'all' ? patients : getPatientsByFloor(selectedFloor);
+  // Fetch real-time patient data from backend
+  const { patients, error } = usePatients({ refreshInterval: 5000 });
+  
+  // Connect to WebSocket for live updates
+  const { isLive, subscribeToFloorHistory } = usePatientRiskHistory();
+  
+  // Subscribe to all floors for live updates
+  useMemo(() => {
+    if (isLive) {
+      ['1F', '2F', '3F'].forEach(floor => subscribeToFloorHistory(floor));
+    }
+  }, [isLive, subscribeToFloorHistory]);
+  
+  // Filter patients by floor if selected
+  const displayPatients = selectedFloor === 'all' 
+    ? patients 
+    : patients.filter(p => p.floor === selectedFloor);
   
   // Apply sorting
-  const sortedPatients = [...displayPatients].sort((a, b) => {
-    if (sortBy === 'risk') return b.riskScore - a.riskScore;
-    if (sortBy === 'floor') return a.floor - b.floor;
-    if (sortBy === 'name') return a.name.localeCompare(b.name);
-    return 0;
-  });
+  const sortedPatients = useMemo(() => {
+    return [...displayPatients].sort((a, b) => {
+      if (sortBy === 'risk') return b.riskScore - a.riskScore;
+      if (sortBy === 'floor') return a.floor - b.floor;
+      if (sortBy === 'name') return a.name.localeCompare(b.name);
+      return 0;
+    });
+  }, [displayPatients, sortBy]);
 
   // Filter by search
-  const filteredPatients = searchQuery
-    ? sortedPatients.filter(p => 
-        p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.bed.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-    : sortedPatients;
+  const filteredPatients = useMemo(() => {
+    return searchQuery
+      ? sortedPatients.filter(p => 
+          p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          p.bed.toLowerCase().includes(searchQuery.toLowerCase())
+        )
+      : sortedPatients;
+  }, [sortedPatients, searchQuery]);
 
-  const floorStats = [1, 2, 3].map(floor => ({
-    floor,
-    ...getFloorStats(floor)
-  }));
+  // Calculate floor stats
+  const floorStats = useMemo(() => {
+    return [1, 2, 3].map(floor => {
+      const floorPatients = patients.filter(p => p.floor === floor);
+      const highRisk = floorPatients.filter(p => p.riskScore > 70).length;
+      const activeAlerts = floorPatients.filter(p => p.alerts && p.alerts.length > 0).length;
+      
+      return {
+        floor,
+        total: floorPatients.length,
+        highRisk,
+        activeAlerts,
+      };
+    });
+  }, [patients]);
+
+  // Mock "my patients" - in real app would come from backend
+  const myPatients = patients.slice(0, 5);
+  
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <p className="text-lg text-red-600 font-semibold">Error loading patients</p>
+          <p className="text-sm text-gray-600 mt-2">{error}</p>
+          <p className="text-xs text-gray-500 mt-4">Make sure the backend API is running on http://localhost:8000</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col lg:flex-row gap-6 h-full">
@@ -48,9 +92,17 @@ export default function DoctorDashboard() {
         <div className="bg-white rounded-lg shadow-md p-4 sticky top-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-bold text-gray-900">My Patients</h2>
-            <span className="bg-primary text-white text-sm font-semibold px-2 py-1 rounded-full">
-              {myPatients.length}
-            </span>
+            <div className="flex items-center gap-2">
+              {isLive && (
+                <span className="flex items-center gap-1 text-xs text-green-600 font-medium">
+                  <Activity className="w-3 h-3 animate-pulse" />
+                  Live
+                </span>
+              )}
+              <span className="bg-primary text-white text-sm font-semibold px-2 py-1 rounded-full">
+                {myPatients.length}
+              </span>
+            </div>
           </div>
 
           <div className="mb-4">
@@ -177,13 +229,11 @@ export default function DoctorDashboard() {
           className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"
         >
           {filteredPatients.length > 0 ? (
-            filteredPatients.map((patient, index) => (
+            filteredPatients.map((patient) => (
               <PatientCard
-                key={patient.id}
+                key={patient.patient_id}
                 patient={patient}
                 onClick={() => setSelectedPatient(patient)}
-                isAssigned={patient.assignedDoctor === doctorName}
-                index={index}
               />
             ))
           ) : (
@@ -196,11 +246,12 @@ export default function DoctorDashboard() {
       </div>
 
       {/* Patient Detail Drawer */}
-      <PatientDetailDrawer
-        isOpen={selectedPatient !== null}
-        onClose={() => setSelectedPatient(null)}
-        patient={selectedPatient}
-      />
+      {selectedPatient && (
+        <PatientDetailDrawer
+          onClose={() => setSelectedPatient(null)}
+          patient={selectedPatient}
+        />
+      )}
     </div>
   );
 }

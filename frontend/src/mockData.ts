@@ -147,7 +147,7 @@ function createVitals(severity: 'low' | 'medium' | 'high' | 'critical'): VitalSi
   };
 }
 
-function createAlerts(vitals: VitalSigns, riskScore: number): Alert[] {
+function createAlerts(vitals: VitalSigns): Alert[] {
   const alerts: Alert[] = [];
   const now = new Date();
   
@@ -249,7 +249,7 @@ for (let i = 0; i < 16; i++) {
   vitals.map = calculateMAP(vitals.systolicBP, vitals.diastolicBP);
   
   const riskScore = calculateRiskScore(vitals);
-  const alerts = createAlerts(vitals, riskScore);
+  const alerts = createAlerts(vitals);
   
   const trends = {
     heartRate: generateTrendData(vitals.heartRate, 5),
@@ -356,17 +356,51 @@ export function getSystemStats() {
 }
 
 // Generate historical data for charts (24 hours)
-export function generateAlertHistory() {
+// Based on realistic ICU patterns: more alerts during shift changes (7am, 3pm, 11pm)
+// and rounds (8-10am), fewer during night hours
+export function generateAlertHistory(currentPatientCount: number = 24, avgRiskScore: number = 50) {
   const data = [];
   const now = new Date();
   
   for (let i = 23; i >= 0; i--) {
     const hour = new Date(now.getTime() - i * 3600000);
+    const hourOfDay = hour.getHours();
+    
+    // Base alert rate depends on patient count and risk
+    const riskMultiplier = avgRiskScore / 50; // Higher avg risk = more alerts
+    const patientMultiplier = currentPatientCount / 24; // More patients = more alerts
+    
+    // Time-based patterns (ICU activity patterns)
+    let timeMultiplier = 1.0;
+    if (hourOfDay >= 7 && hourOfDay <= 9) {
+      // Morning rounds and shift change - high activity
+      timeMultiplier = 1.8;
+    } else if (hourOfDay >= 14 && hourOfDay <= 16) {
+      // Afternoon shift change - moderate activity
+      timeMultiplier = 1.5;
+    } else if (hourOfDay >= 22 || hourOfDay <= 1) {
+      // Night shift change - moderate activity
+      timeMultiplier = 1.3;
+    } else if (hourOfDay >= 2 && hourOfDay <= 5) {
+      // Deep night - lowest activity
+      timeMultiplier = 0.5;
+    }
+    
+    // Calculate alerts with realistic patterns
+    const baseCritical = 2 * riskMultiplier * patientMultiplier * timeMultiplier;
+    const baseWarning = 8 * riskMultiplier * patientMultiplier * timeMultiplier;
+    const baseInfo = 5 * patientMultiplier * timeMultiplier;
+    
+    // Add some variability but keep it realistic
+    const critical = Math.max(0, Math.floor(baseCritical + (Math.random() - 0.5) * 2));
+    const warning = Math.max(0, Math.floor(baseWarning + (Math.random() - 0.5) * 4));
+    const info = Math.max(0, Math.floor(baseInfo + (Math.random() - 0.5) * 3));
+    
     data.push({
-      hour: hour.getHours(),
-      critical: Math.floor(Math.random() * 5),
-      warning: Math.floor(Math.random() * 12) + 3,
-      info: Math.floor(Math.random() * 8) + 2
+      hour: hourOfDay,
+      critical,
+      warning,
+      info
     });
   }
   

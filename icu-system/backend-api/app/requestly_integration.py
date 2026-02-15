@@ -77,10 +77,10 @@ class RequestlyService:
             "sbp_trend": random.uniform(-15, 15),
             "shock_index": random.uniform(0.4, 0.8),
             "spo2": random.uniform(92, 99),
-            "state": random.choice(["stable", "stable", "unstable"]),
-            "computed_risk": random.uniform(0.2, 0.8),
-            "anomaly_flag": random.choice([0, 0, 0, 1]),  # 25% anomaly rate
-            "is_high_risk": random.choice([False, False, False, True]),
+            "state": random.choice(["stable", "stable", "stable", "unstable"]),  # 75% stable
+            "computed_risk": random.uniform(0.15, 0.65),  # Lower range to reduce false alerts (15-65%)
+            "anomaly_flag": random.choice([0, 0, 0, 0, 1]),  # 20% anomaly rate (reduced)
+            "is_high_risk": random.choice([False, False, False, False, True]),  # 20% high risk
             "_mock": True,  # Flag to indicate mock data
             "_requestly_source": "mock-server"
         }

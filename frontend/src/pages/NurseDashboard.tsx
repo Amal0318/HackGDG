@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Grid3X3, List, Grid, FileText } from 'lucide-react';
 import clsx from 'clsx';
 import { motion, AnimatePresence } from 'framer-motion';
-import { patients, getPatientsByWard } from '../mockData';
+import { usePatients, Patient } from '../hooks/usePatients';
 import PatientCard from '../components/PatientCard';
 import PatientDetailDrawer from '../components/PatientDetailDrawer';
 import ShiftHandoffModal from '../components/ShiftHandoffModal';
@@ -15,31 +15,55 @@ export default function NurseDashboard() {
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [filter, setFilter] = useState<FilterType>('all');
   const [sortBy, setSortBy] = useState<SortType>('risk');
-  const [selectedPatient, setSelectedPatient] = useState<typeof patients[0] | null>(null);
+  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [showHandoff, setShowHandoff] = useState(false);
   const [selectedFloor] = useState(3);
   const [selectedWard] = useState('A');
 
-  const wardPatients = getPatientsByWard(selectedFloor, selectedWard);
+  // Fetch real-time patient data
+  const { patients, error } = usePatients({ refreshInterval: 5000 });
+  
+  // Filter by floor (ward concept simplified to floor)
+  const wardPatients = useMemo(() => {
+    return patients.filter(p => p.floor === selectedFloor);
+  }, [patients, selectedFloor]);
   
   // Apply filters
-  let filteredPatients = wardPatients;
-  if (filter === 'high-risk') {
-    filteredPatients = wardPatients.filter(p => p.riskLevel === 'high' || p.riskLevel === 'critical');
-  } else if (filter === 'active-alerts') {
-    filteredPatients = wardPatients.filter(p => p.alerts.length > 0);
-  } else if (filter === 'assigned') {
-    filteredPatients = wardPatients.filter(p => p.assignedNurse === 'Nurse Williams');
-  }
+  const filteredPatients = useMemo(() => {
+    let result = wardPatients;
+    
+    if (filter === 'high-risk') {
+      result = wardPatients.filter(p => p.riskScore > 60);
+    } else if (filter === 'active-alerts') {
+      result = wardPatients.filter(p => p.alerts && p.alerts.length > 0);
+    } else if (filter === 'assigned') {
+      result = wardPatients.filter(p => p.assignedNurse === 'Nurse Williams');
+    }
+    
+    return result;
+  }, [wardPatients, filter]);
 
   // Apply sorting
-  const sortedPatients = [...filteredPatients].sort((a, b) => {
-    if (sortBy === 'risk') return b.riskScore - a.riskScore;
-    if (sortBy === 'bed') return a.bed.localeCompare(b.bed);
-    return 0;
-  });
+  const sortedPatients = useMemo(() => {
+    return [...filteredPatients].sort((a, b) => {
+      if (sortBy === 'risk') return b.riskScore - a.riskScore;
+      if (sortBy === 'bed') return a.bed.localeCompare(b.bed);
+      return 0;
+    });
+  }, [filteredPatients, sortBy]);
 
-  const occupancy = Math.round((wardPatients.length / 16) * 100);
+  const occupancy = Math.round((wardPatients.length / 8) * 100);
+  
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <p className="text-lg text-red-600 font-semibold">Error loading patients</p>
+          <p className="text-sm text-gray-600 mt-2">{error}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -60,7 +84,7 @@ export default function NurseDashboard() {
                     style={{ width: `${occupancy}%` }}
                   />
                 </div>
-                <span className="text-sm font-semibold text-gray-900">{wardPatients.length}/16</span>
+                  <span className="text-sm font-semibold text-gray-900">{wardPatients.length}/8</span>
               </div>
             </div>
             <button
@@ -152,13 +176,11 @@ export default function NurseDashboard() {
             layout
             className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
           >
-            {sortedPatients.map((patient, index) => (
+            {sortedPatients.map((patient) => (
               <PatientCard
-                key={patient.id}
+                key={patient.patient_id}
                 patient={patient}
                 onClick={() => setSelectedPatient(patient)}
-                isAssigned={patient.assignedNurse === 'Nurse Williams'}
-                index={index}
               />
             ))}
           </motion.div>
@@ -191,29 +213,29 @@ export default function NurseDashboard() {
                     className="hover:bg-gray-50 transition-colors cursor-pointer"
                     onClick={() => setSelectedPatient(patient)}
                   >
-                    <td className="px-4 py-3 text-sm font-semibold text-gray-900">{patient.bed}</td>
+                    <td className="px-4 py-3 text-sm font-semibold text-gray-900">{patient.bed_number}</td>
                     <td className="px-4 py-3 text-sm text-gray-900">{patient.name}</td>
-                    <td className="px-4 py-3 text-sm font-mono text-gray-700 hidden md:table-cell">{patient.vitals.heartRate}</td>
+                    <td className="px-4 py-3 text-sm font-mono text-gray-700 hidden md:table-cell">{patient.vitals.heart_rate}</td>
                     <td className="px-4 py-3 text-sm font-mono text-gray-700 hidden md:table-cell">
-                      {patient.vitals.systolicBP}/{patient.vitals.diastolicBP}
+                      {patient.vitals.systolic_bp}/{patient.vitals.diastolic_bp}
                     </td>
                     <td className="px-4 py-3 text-sm font-mono text-gray-700">{patient.vitals.spo2}%</td>
-                    <td className="px-4 py-3 text-sm font-mono text-gray-700 hidden lg:table-cell">{patient.vitals.respiratoryRate}</td>
+                    <td className="px-4 py-3 text-sm font-mono text-gray-700 hidden lg:table-cell">{patient.vitals.respiratory_rate}</td>
                     <td className="px-4 py-3 text-sm font-mono text-gray-700 hidden lg:table-cell">{patient.vitals.temperature}°C</td>
                     <td className="px-4 py-3">
                       <span
                         className={clsx(
                           'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium',
-                          patient.riskLevel === 'low' && 'bg-green-100 text-green-800',
-                          patient.riskLevel === 'medium' && 'bg-yellow-100 text-yellow-800',
-                          patient.riskLevel === 'high' && 'bg-amber-100 text-amber-800',
-                          patient.riskLevel === 'critical' && 'bg-red-100 text-red-800'
+                          patient.latest_risk_score <= 30 && 'bg-green-100 text-green-800',
+                          patient.latest_risk_score > 30 && patient.latest_risk_score <= 50 && 'bg-yellow-100 text-yellow-800',
+                          patient.latest_risk_score > 50 && patient.latest_risk_score <= 70 && 'bg-amber-100 text-amber-800',
+                          patient.latest_risk_score > 70 && 'bg-red-100 text-red-800'
                         )}
                       >
-                        {patient.riskScore}
+                        {patient.latest_risk_score}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-700">{patient.alerts.length}</td>
+                    <td className="px-4 py-3 text-sm text-gray-700">{patient.abnormal_vitals?.length || 0}</td>
                     <td className="px-4 py-3">
                       <button className="text-primary hover:text-primary-dark text-sm font-medium focus-visible-ring">
                         View
@@ -233,12 +255,34 @@ export default function NurseDashboard() {
           <div className="grid grid-cols-4 gap-4">
             {Array.from({ length: 16 }, (_, i) => {
               const bedNum = i + 1;
-              const bed = `${selectedFloor}${selectedWard}-${bedNum}`;
-              const patient = wardPatients.find(p => p.bed === bed);
+              
+              // Find patient for this bed - handle multiple formats
+              const patient = wardPatients.find(p => {
+                const bedNumber = p.bed_number || p.bed || p.patient_id;
+                
+                // Try parsing format: P{floor}-{bed} (e.g., "P1-001", "P2-005")
+                if (bedNumber.includes('-')) {
+                  const parts = bedNumber.split('-');
+                  if (parts.length === 2) {
+                    const bedPart = Number.parseInt(parts[1], 10);
+                    return bedPart === bedNum;
+                  }
+                }
+                
+                // Try parsing simple format: P{number} (e.g., "P1", "P2", "P8")
+                const match = bedNumber.match(/P(\d+)$/);
+                if (match) {
+                  const patientNum = Number.parseInt(match[1], 10);
+                  // Map P1-P8 to beds 1-8
+                  return patientNum === bedNum && bedNum <= 8;
+                }
+                
+                return false;
+              });
               
               return (
                 <motion.div
-                  key={bed}
+                  key={`bed-${bedNum}`}
                   initial={{ opacity: 0, scale: 0.9 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ delay: i * 0.05 }}
@@ -246,10 +290,10 @@ export default function NurseDashboard() {
                   className={clsx(
                     'aspect-square rounded-lg flex flex-col items-center justify-center cursor-pointer transition-transform hover:scale-105 relative group',
                     !patient && 'bg-gray-100 border-2 border-dashed border-gray-300',
-                    patient && patient.riskScore <= 30 && 'bg-green-100 border-2 border-green-300',
-                    patient && patient.riskScore > 30 && patient.riskScore <= 50 && 'bg-yellow-100 border-2 border-yellow-300',
-                    patient && patient.riskScore > 50 && patient.riskScore <= 70 && 'bg-amber-200 border-2 border-amber-400',
-                    patient && patient.riskScore > 70 && 'bg-red-300 border-2 border-red-500'
+                    patient && patient.latest_risk_score <= 30 && 'bg-green-100 border-2 border-green-300',
+                    patient && patient.latest_risk_score > 30 && patient.latest_risk_score <= 50 && 'bg-yellow-100 border-2 border-yellow-300',
+                    patient && patient.latest_risk_score > 50 && patient.latest_risk_score <= 70 && 'bg-amber-200 border-2 border-amber-400',
+                    patient && patient.latest_risk_score > 70 && 'bg-red-300 border-2 border-red-500'
                   )}
                 >
                   <span className="text-2xl font-bold font-mono">{bedNum}</span>
@@ -257,9 +301,9 @@ export default function NurseDashboard() {
                     <div className="absolute inset-0 bg-black bg-opacity-90 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity p-3 flex flex-col justify-center">
                       <p className="text-white font-semibold text-sm">{patient.name}</p>
                       <div className="text-white text-xs mt-2 space-y-1">
-                        <p>HR: {patient.vitals.heartRate}</p>
+                        <p>HR: {patient.vitals.heart_rate}</p>
                         <p>SpO2: {patient.vitals.spo2}%</p>
-                        <p>Risk: {patient.riskScore}</p>
+                        <p>Risk: {Math.round(patient.latest_risk_score)}</p>
                       </div>
                     </div>
                   )}
@@ -271,22 +315,25 @@ export default function NurseDashboard() {
       )}
 
       {/* Patient Detail Drawer */}
-      <PatientDetailDrawer
-        isOpen={selectedPatient !== null}
-        onClose={() => setSelectedPatient(null)}
-        patient={selectedPatient}
-      />
+      {selectedPatient && (
+        <PatientDetailDrawer
+          onClose={() => setSelectedPatient(null)}
+          patient={selectedPatient}
+        />
+      )}
 
       {/* Shift Handoff Modal */}
-      <ShiftHandoffModal
-        isOpen={showHandoff}
-        onClose={() => setShowHandoff(false)}
-        patients={wardPatients}
-        nurseName="Nurse Williams"
-        shift="day"
-        floor={selectedFloor}
-        ward={selectedWard}
-      />
+      {showHandoff && (
+        <ShiftHandoffModal
+          isOpen={showHandoff}
+          onClose={() => setShowHandoff(false)}
+          patients={[] as any}
+          nurseName="Nurse Williams"
+          shift="day"
+          floor={selectedFloor}
+          ward={selectedWard}
+        />
+      )}
     </div>
   );
 }

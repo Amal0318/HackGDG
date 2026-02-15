@@ -1,0 +1,65 @@
+# Railway Deployment Configuration
+# This tells Railway how to deploy your services
+
+[[services]]
+name = "zookeeper"
+source = "confluentinc/cp-zookeeper:7.4.0"
+environment = [
+  "ZOOKEEPER_CLIENT_PORT=2181",
+  "ZOOKEEPER_TICK_TIME=2000"
+]
+
+[[services]]
+name = "kafka"
+source = "confluentinc/cp-kafka:7.4.0"
+environment = [
+  "KAFKA_BROKER_ID=1",
+  "KAFKA_ZOOKEEPER_CONNECT=zookeeper.railway.internal:2181",
+  "KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT",
+  "KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka.railway.internal:9092,PLAINTEXT_HOST://localhost:29092",
+  "KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1",
+  "KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1",
+  "KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1",
+  "KAFKA_AUTO_CREATE_TOPICS_ENABLE=true"
+]
+
+[[services]]
+name = "vital-simulator"
+dockerfile = "icu-system/vital-simulator/Dockerfile"
+context = "icu-system/vital-simulator"
+environment = [
+  "KAFKA_BOOTSTRAP_SERVERS=kafka.railway.internal:9092"
+]
+
+[[services]]
+name = "pathway-engine"
+dockerfile = "icu-system/pathway-engine/Dockerfile"
+context = "icu-system/pathway-engine"
+environment = [
+  "KAFKA_BOOTSTRAP_SERVERS=kafka.railway.internal:9092"
+]
+
+[[services]]
+name = "ml-service"
+dockerfile = "icu-system/ml-service/Dockerfile"
+context = "icu-system/ml-service"
+environment = [
+  "KAFKA_BOOTSTRAP_SERVERS=kafka.railway.internal:9092"
+]
+
+[[services]]
+name = "backend-api"
+dockerfile = "icu-system/backend-api/Dockerfile"
+context = "icu-system/backend-api"
+environment = [
+  "KAFKA_BOOTSTRAP_SERVERS=kafka.railway.internal:9092",
+  "ML_SERVICE_URL=http://ml-service.railway.internal:8000"
+]
+
+[[services]]
+name = "frontend"
+dockerfile = "frontend/Dockerfile"
+context = "frontend"
+environment = [
+  "VITE_API_URL=${{backend-api.RAILWAY_PUBLIC_DOMAIN}}"
+]

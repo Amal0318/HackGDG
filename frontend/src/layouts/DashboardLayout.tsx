@@ -1,4 +1,4 @@
-import { useState, ReactNode } from 'react';
+import React, { useState } from 'react';
 import { Link, useLocation, Outlet } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -9,14 +9,13 @@ import {
   X, 
   Bell, 
   Settings,
-  LogOut,
   ChevronDown,
   User
 } from 'lucide-react';
 import { Menu as HeadlessMenu, Transition } from '@headlessui/react';
 import clsx from 'clsx';
 import StatusDot from '../components/StatusDot';
-import { getSystemStats } from '../mockData';
+import { useStats } from '../hooks/usePatients';
 
 interface NavItem {
   name: string;
@@ -35,7 +34,9 @@ export default function DashboardLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const location = useLocation();
-  const stats = getSystemStats();
+  
+  // Get real stats from backend
+  const { stats } = useStats(10000);
   
   // Determine current role based on path
   const currentPath = location.pathname;
@@ -70,7 +71,12 @@ export default function DashboardLayout() {
         <motion.div
           initial={false}
           animate={{ 
-            width: sidebarOpen || !sidebarCollapsed ? (window.innerWidth < 768 ? '280px' : '240px') : '64px',
+            width: (() => {
+              if (sidebarOpen || !sidebarCollapsed) {
+                return window.innerWidth < 768 ? '280px' : '240px';
+              }
+              return '64px';
+            })(),
             x: sidebarOpen || window.innerWidth >= 768 ? 0 : '-100%'
           }}
           className={clsx(
@@ -84,7 +90,7 @@ export default function DashboardLayout() {
             {(!sidebarCollapsed || sidebarOpen) && (
               <Link to="/nurse" className="flex items-center gap-2">
                 <Activity className="w-8 h-8 text-primary" />
-                <span className="font-bold text-xl text-gray-900">ICU Twin</span>
+                <span className="font-bold text-xl text-gray-900">VitalX</span>
               </Link>
             )}
             <button
@@ -133,15 +139,15 @@ export default function DashboardLayout() {
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-600">Active Patients</span>
-                  <span className="font-semibold">{stats.totalPatients}</span>
+                  <span className="font-semibold">{stats?.total_patients || 0}</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-600">Critical Alerts</span>
-                  <span className="font-semibold text-red-600">{stats.criticalAlerts}</span>
+                  <span className="font-semibold text-red-600">{stats?.high_risk_count || 0}</span>
                 </div>
                 <div className="flex items-center gap-2 text-sm pt-2">
-                  <StatusDot status="connected" size="sm" />
-                  <span className="text-gray-600">All Systems Online</span>
+                  <StatusDot status="connected" />
+                  <span className="text-gray-600">{stats?.data_source === 'kafka' ? 'Live Data' : 'Mock Data'}</span>
                 </div>
               </div>
             </div>
@@ -174,7 +180,7 @@ export default function DashboardLayout() {
             
             <div>
               <h1 className="text-xl font-bold text-gray-900">{currentNavItem?.name || 'Dashboard'}</h1>
-              <p className="text-sm text-gray-500">Real-time ICU Monitoring System</p>
+              <p className="text-sm text-gray-500">Real-time VitalX Monitoring</p>
             </div>
           </div>
 
@@ -182,7 +188,7 @@ export default function DashboardLayout() {
             {/* Notifications */}
             <button className="relative p-2 rounded-lg hover:bg-gray-100 transition-colors">
               <Bell className="w-5 h-5 text-gray-600" />
-              {stats.criticalAlerts > 0 && (
+              {(stats?.high_risk_count || 0) > 0 && (
                 <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
               )}
             </button>
@@ -237,22 +243,6 @@ export default function DashboardLayout() {
                         )}
                       </HeadlessMenu.Item>
                     ))}
-                  </div>
-
-                  <div className="p-2 border-t border-gray-200">
-                    <HeadlessMenu.Item>
-                      {({ active }) => (
-                        <button
-                          className={clsx(
-                            'w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm text-red-600',
-                            active && 'bg-red-50'
-                          )}
-                        >
-                          <LogOut className="w-4 h-4" />
-                          Logout
-                        </button>
-                      )}
-                    </HeadlessMenu.Item>
                   </div>
                 </HeadlessMenu.Items>
               </Transition>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { TrendingUp, TrendingDown, Users, AlertCircle, BedDouble, Minus } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
@@ -6,20 +6,125 @@ import {
   BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line
 } from 'recharts';
 import clsx from 'clsx';
-import { getSystemStats, getAllAlerts, generateAlertHistory, generate7DayTrend, getFloorStats, getPatientsByFloor } from '../mockData';
+import { usePatients, useStats, Patient } from '../hooks/usePatients';
+import { generateAlertHistory, generate7DayTrend } from '../mockData';
 import PatientDetailDrawer from '../components/PatientDetailDrawer';
-import { patients } from '../mockData';
+
+interface Alert {
+  severity: string;
+  timestamp: string | Date;
+  message?: string;
+  patientId: string;
+  patientName: string;
+  patientBed?: string;
+  [key: string]: unknown;
+}
+
+// CountUp component for animated numbers
+const CountUp = ({ end }: { end: number }) => {
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    const duration = 1000;
+    const steps = 60;
+    const increment = end / steps;
+    let current = 0;
+
+    const timer = setInterval(() => {
+      current += increment;
+      if (current >= end) {
+        setCount(end);
+        clearInterval(timer);
+      } else {
+        setCount(Math.floor(current));
+      }
+    }, duration / steps);
+
+    return () => clearInterval(timer);
+  }, [end]);
+
+  return <span>{count}</span>;
+};
 
 export default function ChiefDashboard() {
-  const [selectedPatient, setSelectedPatient] = useState<typeof patients[0] | null>(null);
-  const [selectedFloorDetail, setSelectedFloorDetail] = useState<number | null>(null);
+  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
 
-  const stats = getSystemStats();
-  const allAlerts = getAllAlerts();
+  // Fetch real-time data
+  const { patients, error: patientsError } = usePatients({ refreshInterval: 5000 });
+  const { error: statsError } = useStats(10000);
+
+  // Calculate stats from patients
+  const stats = useMemo(() => {
+    const total = patients.length;
+    const criticalCount = patients.filter(p => p.latest_risk_score > 80).length;
+    const avgRisk = total > 0 
+      ? Math.round(patients.reduce((sum, p) => sum + p.latest_risk_score, 0) / total) 
+      : 0;
+    const occupancy = Math.round((total / 24) * 100); // 24 total beds (3 floors × 8 patients)
+    
+    const riskDistribution = {
+      low: patients.filter(p => p.latest_risk_score < 40).length,
+      medium: patients.filter(p => p.latest_risk_score >= 40 && p.latest_risk_score < 60).length,
+      high: patients.filter(p => p.latest_risk_score >= 60 && p.latest_risk_score < 80).length,
+      critical: patients.filter(p => p.latest_risk_score >= 80).length,
+    };
+    
+    return {
+      totalPatients: total,
+      criticalAlerts: criticalCount,
+      avgRiskScore: avgRisk,
+      bedOccupancy: occupancy,
+      riskDistribution,
+    };
+  }, [patients]);
+  
+  // Helper functions
+  const getPatientsByFloor = (floor: number) => {
+    return patients.filter(p => p.floor === floor);
+  };
+  
+  const getFloorStats = (floor: number) => {
+    const floorPatients = getPatientsByFloor(floor);
+    const highRisk = floorPatients.filter(p => p.latest_risk_score > 70).length;
+    const total = floorPatients.length;
+    const avgRiskScore = total > 0 
+      ? Math.round(floorPatients.reduce((sum, p) => sum + p.latest_risk_score, 0) / total)
+      : 0;
+    return { highRisk, total, occupancy: Math.round((total / 8) * 100), avgRiskScore };
+  };
+  
+  const allAlerts = useMemo(() => {
+    return patients
+      .flatMap(p => (p.abnormal_vitals || []).map(a => ({ 
+        ...a, 
+        patientId: p.patient_id, 
+        patientName: p.name,
+        patientBed: p.bed_number,
+        timestamp: new Date().toISOString(), // Placeholder for timestamp
+        severity: 'critical' // Placeholder for severity
+      })))
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  }, [patients]);
+  
   const criticalAlerts = allAlerts
     .filter(a => a.severity === 'critical')
     .slice(0, 10);
-  const alertHistory = generateAlertHistory();
+  
+  // Generate meaningful alert history based on actual patient data
+  const alertHistory = useMemo(() => {
+    return generateAlertHistory(stats.totalPatients, stats.avgRiskScore);
+  }, [stats.totalPatients, stats.avgRiskScore]);
+
+  if (patientsError || statsError) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <p className="text-lg text-red-600 font-semibold">Error loading dashboard data</p>
+          <p className="text-sm text-gray-600 mt-2">{patientsError || statsError}</p>
+        </div>
+      </div>
+    );
+  }
 
   const overviewCards = [
     {
@@ -71,38 +176,24 @@ export default function ChiefDashboard() {
     { name: 'Critical', value: stats.riskDistribution.critical, color: '#EF4444' }
   ];
 
-  const CountUp = ({ end }: { end: number }) => {
-    const [count, setCount] = useState(0);
-
-    useState(() => {
-      const duration = 1000;
-      const steps = 60;
-      const increment = end / steps;
-      let current = 0;
-
-      const timer = setInterval(() => {
-        current += increment;
-        if (current >= end) {
-          setCount(end);
-          clearInterval(timer);
-        } else {
-          setCount(Math.floor(current));
-        }
-      }, duration / steps);
-
-      return () => clearInterval(timer);
-    });
-
-    return <span>{count}</span>;
-  };
-
   return (
     <div className="space-y-6">
       {/* Overview Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
         {overviewCards.map((card, index) => {
           const Icon = card.icon;
-          const TrendIcon = card.trend === 'up' ? TrendingUp : card.trend === 'down' ? TrendingDown : Minus;
+          let TrendIcon;
+          let trendColor;
+          if (card.trend === 'up') {
+            TrendIcon = TrendingUp;
+            trendColor = 'text-red-500';
+          } else if (card.trend === 'down') {
+            TrendIcon = TrendingDown;
+            trendColor = 'text-green-500';
+          } else {
+            TrendIcon = Minus;
+            trendColor = 'text-gray-400';
+          }
           
           return (
             <motion.div
@@ -119,11 +210,7 @@ export default function ChiefDashboard() {
                     {typeof card.value === 'number' ? <CountUp end={card.value} /> : card.value}
                   </p>
                   <div className="flex items-center gap-1 mt-2">
-                    <TrendIcon className={clsx('w-4 h-4', 
-                      card.trend === 'up' ? 'text-red-500' :
-                      card.trend === 'down' ? 'text-green-500' :
-                      'text-gray-400'
-                    )} />
+                    <TrendIcon className={clsx('w-4 h-4', trendColor)} />
                     <span className="text-xs text-gray-600">{card.trendValue} from yesterday</span>
                   </div>
                 </div>
@@ -157,46 +244,78 @@ export default function ChiefDashboard() {
               <div key={floor} className="space-y-3">
                 <div className="flex items-center justify-between">
                   <h3 className="font-semibold text-gray-900">Floor {floor}</h3>
-                  <button
-                    onClick={() => setSelectedFloorDetail(floor)}
-                    className="text-xs text-primary hover:text-primary-dark font-medium"
-                  >
-                    View Details
-                  </button>
+                  <span className="text-xs text-gray-500 font-medium">
+                    Occupancy: {floorStats.occupancy}%
+                  </span>
                 </div>
                 
                 {/* 4x4 Grid */}
                 <div className="grid grid-cols-4 gap-2">
                   {Array.from({ length: 16 }, (_, i) => {
                     const bedNum = i + 1;
+                    
+                    // Find patient for this bed
+                    // Handle multiple bed_number formats:
+                    // - "P1-001" format (mock mode with floor-bed)
+                    // - "P1", "P2" format (simulator mode)
                     const patient = floorPatients.find(p => {
-                      const bedNumber = parseInt(p.bed.split('-')[1]);
-                      return bedNumber === bedNum;
+                      const bedNumber = p.bed_number || p.bed || p.patient_id;
+                      
+                      // Try parsing format: P{floor}-{bed} (e.g., "P1-001", "P2-005")
+                      if (bedNumber.includes('-')) {
+                        const parts = bedNumber.split('-');
+                        if (parts.length === 2) {
+                          const bedPart = Number.parseInt(parts[1], 10);
+                          return bedPart === bedNum;
+                        }
+                      }
+                      
+                      // Try parsing simple format: P{number} (e.g., "P1", "P2", "P8")
+                      const match = bedNumber.match(/P(\d+)$/);
+                      if (match) {
+                        const patientNum = Number.parseInt(match[1], 10);
+                        // Map P1-P8 to beds 1-8 for each floor
+                        return patientNum === bedNum && bedNum <= 8;
+                      }
+                      
+                      return false;
                     });
                     
+                    // Determine color based on risk score
+                    let colorClasses = 'bg-gray-100 text-gray-400';
+                    if (patient) {
+                      if (patient.latest_risk_score <= 30) {
+                        colorClasses = 'bg-green-200 text-green-800';
+                      } else if (patient.latest_risk_score <= 50) {
+                        colorClasses = 'bg-yellow-200 text-yellow-800';
+                      } else if (patient.latest_risk_score <= 70) {
+                        colorClasses = 'bg-orange-300 text-orange-900';
+                      } else {
+                        colorClasses = 'bg-red-400 text-red-900';
+                      }
+                    }
+                    
                     return (
-                      <div
-                        key={bedNum}
+                      <button
+                        key={`floor-${floor}-bed-${bedNum}`}
                         onClick={() => patient && setSelectedPatient(patient)}
+                        disabled={!patient}
                         className={clsx(
                           'aspect-square rounded-md flex items-center justify-center text-sm font-bold cursor-pointer transition-transform hover:scale-110 relative group',
-                          !patient && 'bg-gray-100 text-gray-400',
-                          patient && patient.riskScore <= 30 && 'bg-green-200 text-green-800',
-                          patient && patient.riskScore > 30 && patient.riskScore <= 50 && 'bg-yellow-200 text-yellow-800',
-                          patient && patient.riskScore > 50 && patient.riskScore <= 70 && 'bg-orange-300 text-orange-900',
-                          patient && patient.riskScore > 70 && 'bg-red-400 text-red-900'
+                          colorClasses,
+                          !patient && 'cursor-not-allowed'
                         )}
                       >
                         {bedNum}
                         {patient && (
                           <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 pointer-events-none">
                             {patient.name}<br />
-                            Risk: {patient.riskScore}
-                            {patient.alerts.length > 0 && <br />}
-                            {patient.alerts.length > 0 && `${patient.alerts.length} alerts`}
+                            Risk: {Math.round(patient.latest_risk_score)}
+                            {patient.alerts && patient.alerts.length > 0 && <br />}
+                            {patient.alerts && patient.alerts.length > 0 && `${patient.alerts.length} alerts`}
                           </div>
                         )}
-                      </div>
+                      </button>
                     );
                   })}
                 </div>
@@ -255,9 +374,9 @@ export default function ChiefDashboard() {
                 outerRadius={100}
                 fill="#8884d8"
                 dataKey="value"
-              >
-                {riskDistributionData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.color} />
+              >  
+                {riskDistributionData.map((entry) => (
+                  <Cell key={`cell-${entry.name}`} fill={entry.color} />
                 ))}
               </Pie>
               <Tooltip />
@@ -277,12 +396,11 @@ export default function ChiefDashboard() {
         </div>
         <div className="divide-y divide-gray-200 max-h-96 overflow-y-auto">
           {criticalAlerts.length > 0 ? (
-            criticalAlerts.map((alert: any, index) => (
+            criticalAlerts.map((alert: Alert) => (
               <motion.div
-                key={index}
+                key={`alert-${alert.patientId}-${new Date(alert.timestamp).getTime()}`}
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: index * 0.05 }}
                 className="p-4 hover:bg-gray-50 transition-colors"
               >
                 <div className="flex items-start justify-between gap-3">
@@ -293,12 +411,18 @@ export default function ChiefDashboard() {
                         {alert.patientName} • Bed {alert.patientBed}
                       </span>
                     </div>
-                    <p className="text-sm text-gray-700">{alert.message}</p>
+                    <p className="text-sm text-gray-700">{alert.message || 'Critical alert'}</p>
                     <p className="text-xs text-gray-500 mt-1">
-                      {formatDistanceToNow(alert.timestamp, { addSuffix: true })}
+                      {formatDistanceToNow(new Date(alert.timestamp), { addSuffix: true })}
                     </p>
                   </div>
-                  <button className="text-xs text-primary hover:text-primary-dark font-medium whitespace-nowrap flex-shrink-0">
+                  <button 
+                    onClick={() => {
+                      const patient = patients.find(p => p.id === alert.patientId);
+                      if (patient) setSelectedPatient(patient);
+                    }}
+                    className="text-xs text-primary hover:text-primary-dark font-medium whitespace-nowrap flex-shrink-0"
+                  >
                     View
                   </button>
                 </div>
@@ -320,11 +444,12 @@ export default function ChiefDashboard() {
       </div>
 
       {/* Patient Detail Drawer */}
-      <PatientDetailDrawer
-        isOpen={selectedPatient !== null}
-        onClose={() => setSelectedPatient(null)}
-        patient={selectedPatient}
-      />
+      {selectedPatient && (
+        <PatientDetailDrawer
+          onClose={() => setSelectedPatient(null)}
+          patient={selectedPatient}
+        />
+      )}
     </div>
   );
 }

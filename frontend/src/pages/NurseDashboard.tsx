@@ -21,7 +21,15 @@ export default function NurseDashboard() {
   const [selectedWard] = useState('A');
 
   // Fetch real-time patient data
-  const { patients, error } = usePatients({ refreshInterval: 5000 });
+  const { patients, error, refetchPatients } = usePatients({ refreshInterval: 5000 });
+  
+  // Handle alert acknowledgment
+  const handleAcknowledge = (patientId: string) => {
+    // Refetch patients to get updated acknowledgment status
+    if (refetchPatients) {
+      refetchPatients();
+    }
+  };
   
   // Filter by floor (ward concept simplified to floor)
   const wardPatients = useMemo(() => {
@@ -173,7 +181,8 @@ export default function NurseDashboard() {
       {viewMode === 'grid' && (
         <AnimatePresence mode="popLayout">
           <motion.div
-            layout
+            la  onAcknowledge={handleAcknowledge}
+              yout
             className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
           >
             {sortedPatients.map((patient) => (

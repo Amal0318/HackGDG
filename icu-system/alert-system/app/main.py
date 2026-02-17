@@ -75,7 +75,7 @@ class AlertSystem:
         conf = {
             'bootstrap.servers': settings.KAFKA_BOOTSTRAP_SERVERS,
             'group.id': settings.KAFKA_GROUP_ID,
-            'auto.offset.reset': 'latest',
+            'auto.offset.reset': 'earliest',  # Read from beginning to catch existing alerts
             'enable.auto.commit': True,
         }
         return Consumer(conf)

@@ -1,0 +1,92 @@
+services:
+  # Zookeeper
+  - type: pserv
+    name: zookeeper
+    env: docker
+    dockerfilePath: ./Dockerfile.zookeeper
+    envVars:
+      - key: ZOOKEEPER_CLIENT_PORT
+        value: 2181
+      - key: ZOOKEEPER_TICK_TIME
+        value: 2000
+
+  # Kafka
+  - type: pserv
+    name: kafka
+    env: docker
+    dockerfilePath: ./Dockerfile.kafka
+    envVars:
+      - key: KAFKA_BROKER_ID
+        value: 1
+      - key: KAFKA_ZOOKEEPER_CONNECT
+        value: zookeeper:2181
+      - key: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
+        value: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      - key: KAFKA_ADVERTISED_LISTENERS
+        value: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      - key: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
+        value: 1
+      - key: KAFKA_TRANSACTION_STATE_LOG_MIN_ISR
+        value: 1
+      - key: KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR
+        value: 1
+      - key: KAFKA_AUTO_CREATE_TOPICS_ENABLE
+        value: true
+
+  # Vital Simulator
+  - type: pserv
+    name: vital-simulator
+    env: docker
+    dockerfilePath: ./icu-system/vital-simulator/Dockerfile
+    dockerContext: ./icu-system/vital-simulator
+    envVars:
+      - key: KAFKA_BOOTSTRAP_SERVERS
+        value: kafka:9092
+
+  # Pathway Engine
+  - type: pserv
+    name: pathway-engine
+    env: docker
+    dockerfilePath: ./icu-system/pathway-engine/Dockerfile
+    dockerContext: ./icu-system/pathway-engine
+    envVars:
+      - key: KAFKA_BOOTSTRAP_SERVERS
+        value: kafka:9092
+
+  # ML Service
+  - type: web
+    name: ml-service
+    env: docker
+    dockerfilePath: ./icu-system/ml-service/Dockerfile
+    dockerContext: ./icu-system/ml-service
+    envVars:
+      - key: KAFKA_BOOTSTRAP_SERVERS
+        value: kafka:9092
+
+  # Backend API
+  - type: web
+    name: backend-api
+    env: docker
+    dockerfilePath: ./icu-system/backend-api/Dockerfile
+    dockerContext: ./icu-system/backend-api
+    envVars:
+      - key: KAFKA_BOOTSTRAP_SERVERS
+        value: kafka:9092
+      - key: ML_SERVICE_URL
+        fromService:
+          type: web
+          name: ml-service
+          property: host
+
+  # Frontend
+  - type: web
+    name: frontend
+    env: docker
+    dockerfilePath: ./frontend/Dockerfile
+    dockerContext: ./frontend
+    envVars:
+      - key: VITE_API_URL
+        fromService:
+          type: web
+          name: backend-api
+          property: host

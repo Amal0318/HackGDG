@@ -1,8 +1,10 @@
 import { motion } from 'framer-motion';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, CheckCircle, Eye } from 'lucide-react';
 import clsx from 'clsx';
 import VitalSign from './VitalSign';
 import RiskBadge from './RiskBadge';
+import { useState } from 'react';
+import { alertAPI } from '../services/api';
 
 interface PatientCardProps {
   patient: {
@@ -11,6 +13,8 @@ interface PatientCardProps {
     bed_number: string;
     latest_risk_score: number;
     abnormal_vitals?: Array<{ vital: string; value: number; unit: string }>;
+    alert_acknowledged?: boolean;
+    acknowledged_by?: string;
     vitals: {
       heart_rate: number;
       systolic_bp: number;
@@ -21,11 +25,29 @@ interface PatientCardProps {
     };
   };
   onClick: () => void;
+  onAcknowledge?: (patientId: string) => void;
 }
 
-const PatientCard: React.FC<PatientCardProps> = ({ patient, onClick }) => {
+const PatientCard: React.FC<PatientCardProps> = ({ patient, onClick, onAcknowledge }) => {
   const abnormalCount = patient.abnormal_vitals?.length || 0;
   const isHighRisk = patient.latest_risk_score >= 70;
+  const [acknowledging, setAcknowledging] = useState(false);
+
+  const handleAcknowledge = async (e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent card click
+    setAcknowledging(true);
+    
+    try {
+      await alertAPI.acknowledgeAlert(patient.patient_id, "Dr. Smith");
+      if (onAcknowledge) {
+        onAcknowledge(patient.patient_id);
+      }
+    } catch (error) {
+      console.error("Failed to acknowledge alert:", error);
+    } finally {
+      setAcknowledging(false);
+    }
+  };
 
   return (
     <motion.div
@@ -36,7 +58,8 @@ const PatientCard: React.FC<PatientCardProps> = ({ patient, onClick }) => {
       className={clsx(
         'relative bg-white rounded-lg shadow-md p-4 cursor-pointer transition-all duration-200',
         'hover:scale-[1.02] hover:shadow-xl hover:border-2 hover:border-primary',
-        isHighRisk && 'border-2 border-red-300',
+        isHighRisk && !patient.alert_acknowledged && 'border-2 border-red-300 animate-pulse',
+        isHighRisk && patient.alert_acknowledged && 'border-2 border-green-300',
         'focus-visible-ring'
       )}
       tabIndex={0}
@@ -49,8 +72,34 @@ const PatientCard: React.FC<PatientCardProps> = ({ patient, onClick }) => {
         }
       }}
     >
+      {/* High Risk Alert Banner */}
+      {isHighRisk && !patient.alert_acknowledged && (
+        <div className="absolute top-0 left-0 right-0 bg-red-500 text-white text-xs font-bold px-3 py-1 rounded-t-lg flex items-center justify-between">
+          <span className="flex items-center gap-1">
+            <AlertCircle className="w-3 h-3" />
+            HIGH RISK ALERT
+          </span>
+          <button
+            onClick={handleAcknowledge}
+            disabled={acknowledging}
+            className="bg-white text-red-600 px-2 py-0.5 rounded text-xs font-semibold hover:bg-red-50 transition-colors flex items-center gap-1 disabled:opacity-50"
+          >
+            <Eye className="w-3 h-3" />
+            {acknowledging ? "..." : "Acknowledge"}
+          </button>
+        </div>
+      )}
+
+      {/* Acknowledged Status */}
+      {isHighRisk && patient.alert_acknowledged && (
+        <div className="absolute top-0 left-0 right-0 bg-green-500 text-white text-xs font-bold px-3 py-1 rounded-t-lg flex items-center gap-1">
+          <CheckCircle className="w-3 h-3" />
+          Alert Acknowledged {patient.acknowledged_by ? `by ${patient.acknowledged_by}` : ''}
+        </div>
+      )}
+
       {/* Header */}
-      <div className="flex justify-between items-start">
+      <div className={clsx("flex justify-between items-start", isHighRisk && "mt-6")}>
         <div>
           <p className="font-bold text-lg text-gray-800">{patient.name}</p>
           <p className="text-sm text-gray-500">Bed {patient.bed_number}</p>

@@ -100,6 +100,9 @@ class VitalXRiskEngine:
             spo2=pw.reducers.avg(pw.this.spo2),
             # Latest state
             state=pw.reducers.any(pw.this.state),
+            # Pass through respiratory_rate and temperature
+            respiratory_rate=pw.reducers.any(pw.this.respiratory_rate),
+            temperature=pw.reducers.any(pw.this.temperature),
         )
         
         # =========================================================
@@ -123,6 +126,8 @@ class VitalXRiskEngine:
             shock_index=pw.this.shock_index,
             spo2=pw.this.spo2,
             state=pw.this.state,
+            respiratory_rate=pw.this.respiratory_rate,
+            temperature=pw.this.temperature,
         )
         
         # =========================================================
@@ -167,6 +172,8 @@ class VitalXRiskEngine:
             computed_risk=pw.this.computed_risk,
             anomaly_flag=pw.this.anomaly_flag,
             state=pw.this.state,
+            respiratory_rate=pw.this.respiratory_rate,
+            temperature=pw.this.temperature,
         )
         
         logger.info("✅ Stateful enrichment complete - LINEAR GROWTH (1:1 ratio expected)")

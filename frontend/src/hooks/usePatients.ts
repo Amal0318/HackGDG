@@ -19,6 +19,9 @@ export interface Patient {
     respiratory_rate: number;
     temperature: number;
   };
+  alert_acknowledged?: boolean;
+  acknowledged_by?: string;
+  acknowledged_at?: string;
   // Keep other potential fields
   [key: string]: any;
 }
@@ -85,6 +88,37 @@ export function usePatients(options: UsePatientOptions = {}) {
   });
 
   const { floorId, refreshInterval = 5000 } = options;
+
+  const refetchPatients = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      let allPatients: Patient[] = [];
+
+      if (floorId) {
+        const backendData = await floorsAPI.getPatients(floorId);
+        allPatients = backendData.map(transformPatientData);
+        setAvailableFloors([floorId]);
+      } else {
+        const floors = await floorsAPI.getAll();
+        const floorIds = floors.map((floor) => floor.id);
+        setAvailableFloors(floorIds);
+        const patientsPromises = floors.map(floor => 
+          floorsAPI.getPatients(floor.id)
+        );
+        const allFloorsData = await Promise.all(patientsPromises);
+        allPatients = allFloorsData.flat().map(transformPatientData);
+      }
+
+      setPatients(allPatients);
+      setLoading(false);
+    } catch (err) {
+      console.error('Failed to fetch patients:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fetch patients');
+      setLoading(false);
+    }
+  }, [floorId]);
 
   useEffect(() => {
     let mounted = true;

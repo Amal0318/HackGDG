@@ -157,8 +157,16 @@ async def get_floor_patients(
         # Return real data from Kafka
         patients = await patient_data_store.get_patients_by_floor(floor_id)
     
-    # Convert to list format
+    # Convert to list format and add acknowledgment status
     patient_list = list(patients.values())
+    for patient in patient_list:
+        patient_id = patient.get("patient_id")
+        if patient_id:
+            ack_data = alert_ack_store.get_acknowledgment(patient_id)
+            patient["alert_acknowledged"] = ack_data is not None
+            if ack_data:
+                patient["acknowledged_by"] = ack_data.get("by")
+                patient["acknowledged_at"] = ack_data.get("at")
     
     # Add statistics
     high_risk_count = sum(1 for p in patient_list if p.get("is_high_risk", False))
@@ -187,6 +195,13 @@ async def get_patient_detail(
     
     if requestly_service.mock_mode:
         # Extract floor from patient_id (P1-xxx, P2-xxx, P3-xxx)
+    # Add acknowledgment status
+    ack_data = alert_ack_store.get_acknowledgment(patient_id)
+    patient_data["alert_acknowledged"] = ack_data is not None
+    if ack_data:
+        patient_data["acknowledged_by"] = ack_data.get("by")
+        patient_data["acknowledged_at"] = ack_data.get("at")
+    
         floor_id = f"{patient_id[1]}F" if patient_id.startswith('P') else "1F"
         patient_data = requestly_service.get_mock_patient_data(patient_id, floor_id)
     else:
@@ -368,6 +383,76 @@ class WebSocketManager:
 
 # Global WebSocket manager
 ws_manager = WebSocketManager()
+
+# =========================================================
+# ALERT ACKNOWLEDGMENT SYSTEM
+# =========================================================
+
+class AlertAcknowledgmentStore:
+    """In-memory store for alert acknowledgments"""
+    
+    def __init__(self):
+        self.acknowledgments: dict[str, dict] = {}
+        # Format: {patient_id: {"acknowledged": True, "by": "Dr. Smith", "at": "2024-02-15T10:30:00"}}
+    
+    def acknowledge_alert(self, patient_id: str, acknowledged_by: str = "Doctor"):
+        """Mark alert as acknowledged"""
+        from datetime import datetime
+        self.acknowledgments[patient_id] = {
+            "acknowledged": True,
+            "by": acknowledged_by,
+            "at": datetime.now().isoformat()
+        }
+        logger.info(f"✅ Alert acknowledged for {patient_id} by {acknowledged_by}")
+    
+    def is_acknowledged(self, patient_id: str) -> bool:
+        """Check if alert is acknowledged"""
+        return self.acknowledgments.get(patient_id, {}).get("acknowledged", False)
+    
+    def get_acknowledgment(self, patient_id: str) -> Optional[dict]:
+        """Get acknowledgment details"""
+        return self.acknowledgments.get(patient_id)
+    
+    def clear_acknowledgment(self, patient_id: str):
+        """Clear acknowledgment (e.g., when patient condition changes)"""
+        if patient_id in self.acknowledgments:
+            del self.acknowledgments[patient_id]
+            logger.info(f"🔄 Acknowledgment cleared for {patient_id}")
+
+# Global acknowledgment store
+alert_ack_store = AlertAcknowledgmentStore()
+
+@app.post("/api/patients/{patient_id}/acknowledge-alert")
+async def acknowledge_patient_alert(
+    patient_id: str,
+    acknowledged_by: str = "Doctor"
+):
+    """
+    Acknowledge a high-risk alert for a patient
+    Doctors can mark that they've seen and are addressing the alert
+    """
+    requestly_service.log_api_request(f"/api/patients/{patient_id}/acknowledge-alert", "POST", acknowledged_by)
+    
+    # Verify patient exists
+    if requestly_service.mock_mode:
+        floor_id = f"{patient_id[1]}F" if patient_id.startswith('P') else "1F"
+        patient_data = requestly_service.get_mock_patient_data(patient_id, floor_id)
+    else:
+        patient_data = await patient_data_store.get_patient(patient_id)
+        if not patient_data:
+            raise HTTPException(status_code=404, detail=f"Patient {patient_id} not found")
+    
+    # Acknowledge the alert
+    alert_ack_store.acknowledge_alert(patient_id, acknowledged_by)
+    
+    response = {
+        "patient_id": patient_id,
+        "acknowledged": True,
+        "by": acknowledged_by,
+        "message": f"Alert for {patient_id} acknowledged successfully"
+    }
+    
+    return requestly_service.intercept_response(response, f"/api/patients/{patient_id}/acknowledge-alert")
 
 @app.websocket("/ws/patients")
 async def websocket_patient_stream(websocket: WebSocket):

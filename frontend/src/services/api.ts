@@ -188,9 +188,19 @@ export const authAPI = {
   }
 };
 
+// Alert acknowledgment API
+export const alertAPI = {
+  async acknowledgeAlert(patientId: string, acknowledgedBy: string = "Doctor"): Promise<any> {
+    return apiFetch(`/api/patients/${patientId}/acknowledge-alert?acknowledged_by=${encodeURIComponent(acknowledgedBy)}`, {
+      method: 'POST'
+    });
+  }
+};
+
 export default {
   floors: floorsAPI,
   patients: patientsAPI,
   stats: statsAPI,
   admin: adminAPI,
+  alerts: alertAPI,
 };

@@ -23,8 +23,8 @@ class Settings:
     
     # Kafka Settings
     KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:29092")
-    KAFKA_TOPIC = "vitals_enriched"
-    KAFKA_GROUP_ID = "alert-system-consumer"
+    KAFKA_TOPIC = "vitals_predictions"
+    KAFKA_GROUP_ID = "alert-system-consumer-v2"  # New group ID to read from earliest
     
     # Alert Thresholds
     HIGH_RISK_THRESHOLD = 0.7  # Trigger alert if computed_risk > 0.7

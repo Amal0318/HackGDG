@@ -17,7 +17,7 @@ export default function DoctorDashboard() {
   const [searchQuery, setSearchQuery] = useState('');
 
   // Fetch real-time patient data from backend
-  const { patients, error, refetchPatients } = usePatients({ refreshInterval: 5000 });
+  const { patients, error } = usePatients({ refreshInterval: 5000 });
   
   // Connect to WebSocket for live updates
   const { isLive, subscribeToFloorHistory } = usePatientRiskHistory();
@@ -28,14 +28,6 @@ export default function DoctorDashboard() {
       ['1F', '2F', '3F'].forEach(floor => subscribeToFloorHistory(floor));
     }
   }, [isLive, subscribeToFloorHistory]);
-
-  // Handle alert acknowledgment
-  const handleAcknowledge = (patientId: string) => {
-    // Refetch patients to get updated acknowledgment status
-    if (refetchPatients) {
-      refetchPatients();
-    }
-  };
   
   // Filter patients by floor if selected
   const displayPatients = selectedFloor === 'all' 
@@ -234,8 +226,7 @@ export default function DoctorDashboard() {
         {/* Patient Grid */}
         <motion.div
           layout
-          clas  onAcknowledge={handleAcknowledge}
-              sName="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"
+          className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"
         >
           {filteredPatients.length > 0 ? (
             filteredPatients.map((patient) => (

@@ -197,10 +197,61 @@ export const alertAPI = {
   }
 };
 
+// RAG API - AI-powered patient handoff assistant
+const RAG_BASE_URL = 'http://localhost:8002';
+
+export const ragAPI = {
+  async query(question: string, patientId?: string, timeWindowHours: number = 4): Promise<any> {
+    const response = await fetch(`${RAG_BASE_URL}/api/handoff/query`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        question,
+        patient_id: patientId,
+        time_window_hours: timeWindowHours
+      })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`RAG query failed: ${response.statusText}`);
+    }
+    
+    return response.json();
+  },
+
+  async getSummary(patientId: string, hours: number = 4): Promise<any> {
+    const response = await fetch(`${RAG_BASE_URL}/api/handoff/summary`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        patient_id: patientId,
+        hours
+      })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`RAG summary failed: ${response.statusText}`);
+    }
+    
+    return response.json();
+  },
+
+  async checkHealth(): Promise<any> {
+    const response = await fetch(`${RAG_BASE_URL}/health`);
+    
+    if (!response.ok) {
+      throw new Error('RAG service unavailable');
+    }
+    
+    return response.json();
+  }
+};
+
 export default {
   floors: floorsAPI,
   patients: patientsAPI,
   stats: statsAPI,
   admin: adminAPI,
   alerts: alertAPI,
+  rag: ragAPI,
 };

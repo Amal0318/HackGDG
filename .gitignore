@@ -64,6 +64,9 @@ icu-system/logs/*.log
 .env
 .env.local
 .env.*.local
+**/.env
+icu-system/.env
+.env.example
 
 # Helper scripts (Windows-specific)
 *.bat

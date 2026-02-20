@@ -187,7 +187,7 @@ export function usePatients(options: UsePatientOptions = {}) {
       });
   }, [isConnected, floorId, availableFloors, subscribeToFloor]);
 
-  return { patients, loading, error };
+  return { patients, loading, error, refetchPatients };
 }
 
 export function usePatient(patientId: string, refreshInterval = 5000) {

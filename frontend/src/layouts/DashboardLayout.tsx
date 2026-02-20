@@ -10,11 +10,13 @@ import {
   Bell, 
   Settings,
   ChevronDown,
-  User
+  User,
+  MessageCircle
 } from 'lucide-react';
 import { Menu as HeadlessMenu, Transition } from '@headlessui/react';
 import clsx from 'clsx';
 import StatusDot from '../components/StatusDot';
+import RAGSupportModal from '../components/RAGSupportModal';
 import { useStats } from '../hooks/usePatients';
 
 interface NavItem {
@@ -33,6 +35,7 @@ const navigation: NavItem[] = [
 export default function DashboardLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [ragModalOpen, setRagModalOpen] = useState(false);
   const location = useLocation();
   
   // Get real stats from backend
@@ -254,6 +257,24 @@ export default function DashboardLayout() {
         <main className="flex-1 overflow-y-auto p-6">
           <Outlet />
         </main>
+
+      {/* Floating RAG Support Button */}
+      <button
+        onClick={() => setRagModalOpen(true)}
+        className="fixed bottom-6 right-6 p-4 bg-gradient-to-r from-primary to-primary-dark text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-110 z-40 group"
+        title="AI Support Assistant"
+      >
+        <MessageCircle className="w-6 h-6" />
+        <span className="absolute right-full mr-3 top-1/2 -translate-y-1/2 bg-gray-900 text-white text-sm px-3 py-1.5 rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+          AI Support Assistant
+        </span>
+      </button>
+
+      {/* RAG Support Modal */}
+      <RAGSupportModal 
+        isOpen={ragModalOpen}
+        onClose={() => setRagModalOpen(false)}
+      />
       </div>
     </div>
   );

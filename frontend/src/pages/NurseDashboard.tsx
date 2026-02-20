@@ -1,11 +1,12 @@
 import { useState, useMemo } from 'react';
-import { Grid3X3, List, Grid, FileText } from 'lucide-react';
+import { Grid3X3, List, Grid, FileText, MessageCircle } from 'lucide-react';
 import clsx from 'clsx';
 import { motion, AnimatePresence } from 'framer-motion';
 import { usePatients, Patient } from '../hooks/usePatients';
 import PatientCard from '../components/PatientCard';
 import PatientDetailDrawer from '../components/PatientDetailDrawer';
 import ShiftHandoffModal from '../components/ShiftHandoffModal';
+import RAGSupportModal from '../components/RAGSupportModal';
 
 type ViewMode = 'grid' | 'list' | 'heatmap';
 type FilterType = 'all' | 'high-risk' | 'active-alerts' | 'assigned';
@@ -17,19 +18,12 @@ export default function NurseDashboard() {
   const [sortBy, setSortBy] = useState<SortType>('risk');
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [showHandoff, setShowHandoff] = useState(false);
+  const [showRAG, setShowRAG] = useState(false);
   const [selectedFloor] = useState(3);
   const [selectedWard] = useState('A');
 
   // Fetch real-time patient data
-  const { patients, error, refetchPatients } = usePatients({ refreshInterval: 5000 });
-  
-  // Handle alert acknowledgment
-  const handleAcknowledge = (patientId: string) => {
-    // Refetch patients to get updated acknowledgment status
-    if (refetchPatients) {
-      refetchPatients();
-    }
-  };
+  const { patients, error } = usePatients({ refreshInterval: 5000 });
   
   // Filter by floor (ward concept simplified to floor)
   const wardPatients = useMemo(() => {
@@ -95,6 +89,13 @@ export default function NurseDashboard() {
                   <span className="text-sm font-semibold text-gray-900">{wardPatients.length}/8</span>
               </div>
             </div>
+            <button
+              onClick={() => setShowRAG(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors focus-visible-ring"
+            >
+              <MessageCircle className="w-4 h-4" />
+              <span className="hidden md:inline">AI Support</span>
+            </button>
             <button
               onClick={() => setShowHandoff(true)}
               className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-dark transition-colors focus-visible-ring"
@@ -181,8 +182,7 @@ export default function NurseDashboard() {
       {viewMode === 'grid' && (
         <AnimatePresence mode="popLayout">
           <motion.div
-            la  onAcknowledge={handleAcknowledge}
-              yout
+            layout
             className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
           >
             {sortedPatients.map((patient) => (
@@ -343,6 +343,12 @@ export default function NurseDashboard() {
           ward={selectedWard}
         />
       )}
+
+      {/* RAG AI Support Modal */}
+      <RAGSupportModal
+        isOpen={showRAG}
+        onClose={() => setShowRAG(false)}
+      />
     </div>
   );
 }

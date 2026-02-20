@@ -195,13 +195,6 @@ async def get_patient_detail(
     
     if requestly_service.mock_mode:
         # Extract floor from patient_id (P1-xxx, P2-xxx, P3-xxx)
-    # Add acknowledgment status
-    ack_data = alert_ack_store.get_acknowledgment(patient_id)
-    patient_data["alert_acknowledged"] = ack_data is not None
-    if ack_data:
-        patient_data["acknowledged_by"] = ack_data.get("by")
-        patient_data["acknowledged_at"] = ack_data.get("at")
-    
         floor_id = f"{patient_id[1]}F" if patient_id.startswith('P') else "1F"
         patient_data = requestly_service.get_mock_patient_data(patient_id, floor_id)
     else:
@@ -209,6 +202,13 @@ async def get_patient_detail(
         
         if not patient_data:
             raise HTTPException(status_code=404, detail=f"Patient {patient_id} not found")
+    
+    # Add acknowledgment status
+    ack_data = alert_ack_store.get_acknowledgment(patient_id)
+    patient_data["alert_acknowledged"] = ack_data is not None
+    if ack_data:
+        patient_data["acknowledged_by"] = ack_data.get("by")
+        patient_data["acknowledged_at"] = ack_data.get("at")
     
     return requestly_service.intercept_response(patient_data, f"/api/patients/{patient_id}")
 

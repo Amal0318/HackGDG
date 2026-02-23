@@ -1,9 +1,3 @@
-# FastAPI ML inference service dependencies - Production Stable Versions
-fastapi==0.110.0
-uvicorn==0.27.0
-pydantic==2.6.0
+# ML Service dependencies - Streaming Architecture
 numpy==1.26.4
-scikit-learn==1.3.2
-joblib==1.3.2
 kafka-python==2.0.2
-python-snappy==0.6.1

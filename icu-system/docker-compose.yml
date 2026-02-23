@@ -57,6 +57,8 @@ services:
         condition: service_healthy
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      NUM_PATIENTS: ${NUM_PATIENTS:-5}
+      UPDATE_INTERVAL_SECONDS: ${UPDATE_INTERVAL_SECONDS:-1}
     networks:
       - icu-network
     restart: unless-stopped
@@ -65,11 +67,14 @@ services:
     build:
       context: ./pathway-engine
     container_name: icu-pathway-engine
+    ports:
+      - "8080:8080"  # Query API for RAG
     depends_on:
       kafka:
         condition: service_healthy
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      QUERY_API_PORT: 8080
     networks:
       - icu-network
     restart: unless-stopped
@@ -78,8 +83,6 @@ services:
     build:
       context: ./ml-service
     container_name: icu-ml-service
-    ports:
-      - "8001:8000"
     depends_on:
       kafka:
         condition: service_healthy
@@ -98,52 +101,76 @@ services:
     depends_on:
       kafka:
         condition: service_healthy
+      pathway-engine:
+        condition: service_started
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      ML_SERVICE_URL: http://ml-service:8000
-    networks:
-      - icu-network
-    restart: unless-stopped
-
-  alert-system:
-    build:
-      context: ./alert-system
-    container_name: icu-alert-system
-    depends_on:
-      kafka:
-        condition: service_healthy
-    environment:
-      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      PATHWAY_RAG_URL: http://pathway-engine:8080
+      GEMINI_API_KEY: AIzaSyCsrWVr4XgVfRS4PG0-TpWg5XUcJl1WrvU
       LLM_PROVIDER: gemini
-      GEMINI_MODEL: gemini-2.5-flash
-      GEMINI_API_KEY: ${GEMINI_API_KEY}
-      ENABLE_EMAIL_ALERTS: ${ENABLE_EMAIL_ALERTS:-true}
-      SMTP_SERVER: ${SMTP_SERVER:-smtp.gmail.com}
-      SMTP_PORT: ${SMTP_PORT:-587}
-      SMTP_USERNAME: ${SMTP_USERNAME}
-      SMTP_PASSWORD: ${SMTP_PASSWORD}
-      ALERT_EMAIL_FROM: ${ALERT_EMAIL_FROM:-icu-alerts@hospital.com}
-      ALERT_EMAIL_TO: ${ALERT_EMAIL_TO}
-      BACKEND_API_URL: http://backend-api:8000
+      GEMINI_MODEL: gemini-2.5-flash-lite
     networks:
       - icu-network
     restart: unless-stopped
 
-  rag-service:
+  alert-engine:
     build:
-      context: ./rag-service
-    container_name: icu-rag-service
-    ports:
-      - "8002:8000"
+      context: ./alert-engine
+    container_name: icu-alert-engine
     depends_on:
       kafka:
         condition: service_healthy
+      ml-service:
+        condition: service_started
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      GROQ_API_KEY: ${GROQ_API_KEY}
+      ALERT_THRESHOLD: ${ALERT_THRESHOLD:-0.75}
     networks:
       - icu-network
     restart: unless-stopped
+
+  # Legacy alert system (email alerts with LLM)
+  # Uncomment if email alerting is needed
+  # alert-system:
+  #   build:
+  #     context: ./alert-system
+  #   container_name: icu-alert-system
+  #   depends_on:
+  #     kafka:
+  #       condition: service_healthy
+  #   environment:
+  #     KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+  #     LLM_PROVIDER: gemini
+  #     GEMINI_MODEL: gemini-2.5-flash
+  #     GEMINI_API_KEY: ${GEMINI_API_KEY}
+  #     ENABLE_EMAIL_ALERTS: ${ENABLE_EMAIL_ALERTS:-true}
+  #     SMTP_SERVER: ${SMTP_SERVER:-smtp.gmail.com}
+  #     SMTP_PORT: ${SMTP_PORT:-587}
+  #     SMTP_USERNAME: ${SMTP_USERNAME}
+  #     SMTP_PASSWORD: ${SMTP_PASSWORD}
+  #     ALERT_EMAIL_FROM: ${ALERT_EMAIL_FROM:-icu-alerts@hospital.com}
+  #     ALERT_EMAIL_TO: ${ALERT_EMAIL_TO}
+  #     BACKEND_API_URL: http://backend-api:8000
+  #   networks:
+  #     - icu-network
+  #   restart: unless-stopped
+
+  # Standalone RAG service removed - RAG now inside pathway-engine
+  # rag-service:
+  #   build:
+  #     context: ./rag-service
+  #   container_name: icu-rag-service
+  #   ports:
+  #     - "8002:8000"
+  #   depends_on:
+  #     kafka:
+  #       condition: service_healthy
+  #   environment:
+  #     KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+  #     GROQ_API_KEY: ${GROQ_API_KEY}
+  #   networks:
+  #     - icu-network
+  #   restart: unless-stopped
 
   frontend:
     build:

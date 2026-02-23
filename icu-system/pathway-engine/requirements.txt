@@ -1,11 +1,18 @@
 # VitalX Pathway Streaming Engine Dependencies
 # Pathway - Real-time stream processing framework
-# Note: Pathway includes its own pydantic dependency, so we don't pin versions
 pathway>=0.8.0
 
 # Kafka integration
 confluent-kafka>=2.3.0
 
+# Streaming RAG dependencies
+sentence-transformers>=2.2.2
+numpy>=1.24.0
+
+# Query API
+fastapi>=0.104.0
+uvicorn>=0.24.0
+
 # Configuration and settings
 python-dotenv>=1.0.0
-pydantic-settings>=2.0.0
+pydantic>=2.0.0

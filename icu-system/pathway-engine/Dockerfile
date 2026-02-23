@@ -44,12 +44,12 @@ RUN apt-get update && apt-get install -y \
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Create app user for security (non-root execution)
-RUN groupadd -r vitalx && useradd -r -g vitalx vitalx
+# Create app user for security (non-root execution) with home directory
+RUN groupadd -r vitalx && useradd -r -m -g vitalx vitalx
 
-# Create application directories
+# Create application directories and model cache directory
 RUN mkdir -p /app /app/logs /app/data && \
-    chown -R vitalx:vitalx /app
+    chown -R vitalx:vitalx /app /home/vitalx
 
 # Set working directory
 WORKDIR /app
@@ -68,7 +68,9 @@ ENV PYTHONPATH=/app \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    HOME=/home/vitalx \
+    HF_HOME=/home/vitalx/.cache/huggingface
 
-# Production command to start VitalX Pathway Engine
-CMD ["python", "-m", "app.main"]
+# Production command to start VitalX Pathway Engine (NEW streaming-first architecture)
+CMD ["python", "-m", "app.main_new"]

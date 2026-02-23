@@ -3,14 +3,22 @@ fastapi==0.104.1
 uvicorn[standard]==0.24.0
 websockets==12.0
 
-# Authentication
-python-jose[cryptography]==3.3.0
-python-multipart==0.0.6
-passlib[bcrypt]==1.7.4
+# Kafka (updated for streaming architecture)
+kafka-python>=2.0.2
 
-# Kafka
-confluent-kafka==2.3.0
+# HTTP client for RAG queries
+httpx>=0.24.0
 
 # Utilities
 pydantic==2.5.0
 python-dotenv==1.0.0
+
+# LangChain for RAG chat
+langchain>=0.1.0
+langchain-google-genai>=1.0.0
+langchain-openai>=0.0.5
+
+# PDF Report Generation
+reportlab>=4.0.0
+matplotlib>=3.8.0
+pillow>=10.0.0

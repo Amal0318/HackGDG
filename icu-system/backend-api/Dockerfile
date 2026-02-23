@@ -14,5 +14,5 @@ COPY app/ ./app/
 # Expose port for FastAPI
 EXPOSE 8000
 
-# Run FastAPI with uvicorn
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run the new streaming backend API
+CMD ["uvicorn", "app.main_new:app", "--host", "0.0.0.0", "--port", "8000"]

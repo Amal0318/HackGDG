@@ -1,4 +1,3 @@
-# Vital Simulator Service Dockerfile
 FROM python:3.10-slim
 
 # Set working directory
@@ -11,8 +10,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY app/ ./app/
 
-# Expose port (internal communication)
-EXPOSE 8000
-
-# Run the new drift-based simulator
-CMD ["python", "app/main_new.py"]
+# Run the alert engine
+CMD ["python", "app/main.py"]

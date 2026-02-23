@@ -566,19 +566,19 @@ class Patient:
         prev = self.last_vitals
         
         if self.state == PatientState.STABLE:
-            # PART 2: Stability bias mechanism with small noise (mostly stable and boring)
+            #MIMIC-IV REALISM: Very small noise for stable patients (like real ICU monitors)
             vitals = VitalSigns(
                 heart_rate=self._stability_bias_mechanism(
-                    prev.heart_rate, self.baseline_hr, 1.5),  # HR noise: std 1-2
+                    prev.heart_rate, self.baseline_hr, 0.5),  # HR noise: std 0.5 (was 1.5)
                 systolic_bp=self._stability_bias_mechanism(
-                    prev.systolic_bp, self.baseline_sbp, 2.0),  # SBP noise: std 1-3
+                    prev.systolic_bp, self.baseline_sbp, 0.8),  # SBP noise: std 0.8 (was 2.0)
                 diastolic_bp=prev.diastolic_bp,  # Calculated in clamp_vitals
                 spo2=self._stability_bias_mechanism(
-                    prev.spo2, self.baseline_spo2, 0.3),  # SpO2 noise: std 0.2-0.5
+                    prev.spo2, self.baseline_spo2, 0.1),  # SpO2 noise: std 0.1 (was 0.3)
                 respiratory_rate=self._stability_bias_mechanism(
-                    prev.respiratory_rate, self.baseline_rr, 0.8),
+                    prev.respiratory_rate, self.baseline_rr, 0.3),  # RR noise: std 0.3 (was 0.8)
                 temperature=self._stability_bias_mechanism(
-                    prev.temperature, self.baseline_temp, 0.05)
+                    prev.temperature, self.baseline_temp, 0.02)  # Temp noise: 0.02 (was 0.05)
             )
             return self._clamp_vitals(vitals)
             
@@ -592,16 +592,16 @@ class Patient:
             
             vitals = VitalSigns(
                 heart_rate=self._stability_bias_mechanism(
-                    prev.heart_rate, target_hr, 1.2),
+                    prev.heart_rate, target_hr, 0.7),  # Reduced from 1.2
                 systolic_bp=self._stability_bias_mechanism(
-                    prev.systolic_bp, target_sbp, 1.5),
+                    prev.systolic_bp, target_sbp, 1.0),  # Reduced from 1.5
                 diastolic_bp=prev.diastolic_bp,  # Calculated in clamp_vitals
                 spo2=self._stability_bias_mechanism(
-                    prev.spo2, target_spo2, 0.4),
+                    prev.spo2, target_spo2, 0.2),  # Reduced from 0.4
                 respiratory_rate=self._stability_bias_mechanism(
-                    prev.respiratory_rate, target_rr, 0.6),
+                    prev.respiratory_rate, target_rr, 0.4),  # Reduced from 0.6
                 temperature=self._stability_bias_mechanism(
-                    prev.temperature, target_temp, 0.05)
+                    prev.temperature, target_temp, 0.03)  # Reduced from 0.05
             )
             
             return self._clamp_vitals(vitals)
@@ -616,16 +616,16 @@ class Patient:
             
             vitals = VitalSigns(
                 heart_rate=self._stability_bias_mechanism(
-                    prev.heart_rate, target_hr, 1.2),
+                    prev.heart_rate, target_hr, 0.8),  # Reduced from 1.2
                 systolic_bp=self._stability_bias_mechanism(
-                    prev.systolic_bp, target_sbp, 1.5),
+                    prev.systolic_bp, target_sbp, 1.0),  # Reduced from 1.5
                 diastolic_bp=prev.diastolic_bp,  # Calculated in clamp_vitals
                 spo2=self._stability_bias_mechanism(
-                    prev.spo2, target_spo2, 0.4),
+                    prev.spo2, target_spo2, 0.3),  # Reduced from 0.4
                 respiratory_rate=self._stability_bias_mechanism(
-                    prev.respiratory_rate, target_rr, 0.6),
+                    prev.respiratory_rate, target_rr, 0.5),  # Reduced from 0.6
                 temperature=self._stability_bias_mechanism(
-                    prev.temperature, target_temp, 0.05)
+                    prev.temperature, target_temp, 0.04)  # Reduced from 0.05
             )
             
             return self._clamp_vitals(vitals)
@@ -640,21 +640,21 @@ class Patient:
             
             vitals = VitalSigns(
                 heart_rate=self._stability_bias_mechanism(
-                    prev.heart_rate, target_hr, 1.2),
+                    prev.heart_rate, target_hr, 1.0),  # Reduced from 1.2 (more variability in critical)
                 systolic_bp=self._stability_bias_mechanism(
-                    prev.systolic_bp, target_sbp, 1.5),
+                    prev.systolic_bp, target_sbp, 1.2),  # Reduced from 1.5
                 diastolic_bp=prev.diastolic_bp,  # Calculated in clamp_vitals
                 spo2=self._stability_bias_mechanism(
-                    prev.spo2, target_spo2, 0.4),
+                    prev.spo2, target_spo2, 0.5),  # Slightly increased from 0.4 (unstable in critical)
                 respiratory_rate=self._stability_bias_mechanism(
-                    prev.respiratory_rate, target_rr, 0.6),
+                    prev.respiratory_rate, target_rr, 0.7),  # Slightly increased from 0.6
                 temperature=self._stability_bias_mechanism(
-                    prev.temperature, target_temp, 0.05)
+                    prev.temperature, target_temp, 0.04)  # Reduced from 0.05
             )
             return self._clamp_vitals(vitals)
             
         elif self.state == PatientState.INTERVENTION:
-            # PART 7: Recovery dynamics with gradual improvement slopes
+            # PART 7: Recovery dynamics with gradual improvement slopes (MIMIC-IV realism)
             # HR decrease slope: max 3 bpm per second
             # SBP increase slope: max 3 mmHg per second  
             # SpO2 increase slope: max 1% per second
@@ -665,12 +665,12 @@ class Patient:
             spo2_improvement = 1 if prev.spo2 < self.baseline_spo2 else -1
             
             vitals = VitalSigns(
-                heart_rate=prev.heart_rate + hr_improvement + random.gauss(0, 1.0),
-                systolic_bp=prev.systolic_bp + sbp_improvement + random.gauss(0, 1.5),
+                heart_rate=prev.heart_rate + hr_improvement + random.gauss(0, 0.5),  # Reduced from 1.0
+                systolic_bp=prev.systolic_bp + sbp_improvement + random.gauss(0, 0.8),  # Reduced from 1.5
                 diastolic_bp=prev.diastolic_bp,  # Calculated in clamp_vitals
-                spo2=prev.spo2 + spo2_improvement + random.gauss(0, 0.3),
-                respiratory_rate=prev.respiratory_rate + (self.baseline_rr - prev.respiratory_rate) * 0.05 + random.gauss(0, 0.6),
-                temperature=prev.temperature + (self.baseline_temp - prev.temperature) * 0.03 + random.gauss(0, 0.05)
+                spo2=prev.spo2 + spo2_improvement + random.gauss(0, 0.2),  # Reduced from 0.3
+                respiratory_rate=prev.respiratory_rate + (self.baseline_rr - prev.respiratory_rate) * 0.05 + random.gauss(0, 0.4),  # Reduced from 0.6
+                temperature=prev.temperature + (self.baseline_temp - prev.temperature) * 0.03 + random.gauss(0, 0.03)  # Reduced from 0.05
             )
             return self._clamp_vitals(vitals)
             

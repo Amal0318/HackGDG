@@ -83,6 +83,12 @@ export const patientsAPI = {
   async getById(patientId: string): Promise<PatientData> {
     return apiFetch<PatientData>(`/api/patients/${patientId}`);
   },
+  
+  async getVitalsHistory(patientId: string, hours: number = 1): Promise<any> {
+    const response = await apiFetch<any>(`/api/patients/${patientId}/history?hours=${hours}`);
+    // Extract the history array from the response
+    return response.history || [];
+  },
 };
 
 // Stats API
@@ -109,8 +115,55 @@ export const adminAPI = {
 // Helper: Transform backend patient data to frontend format
 export function transformPatientData(backendData: any) {
   // Calculate derived values - Use ?? instead of || to preserve 0 as valid value
-  const rawRiskScore = backendData.computed_risk ?? backendData.latest_risk_score ?? 0;
+  const rawRiskScore = backendData.risk_score ?? backendData.computed_risk ?? backendData.latest_risk_score ?? 0;
   const riskScore = rawRiskScore * 100; // Convert 0-1 to 0-100
+  
+  // Extract anomaly flags from features
+  const features = backendData.features || {};
+  const vitals = backendData.vitals || backendData;
+  
+  // Build abnormal_vitals array from anomaly flags
+  const abnormalVitals: Array<{ vital: string; value: number; unit: string }> = [];
+  
+  if (features.hr_anomaly) {
+    abnormalVitals.push({
+      vital: 'Heart Rate',
+      value: Math.round(vitals.heart_rate ?? backendData.heart_rate ?? 0),
+      unit: 'bpm'
+    });
+  }
+  
+  if (features.sbp_anomaly) {
+    abnormalVitals.push({
+      vital: 'Systolic BP',
+      value: Math.round(vitals.systolic_bp ?? backendData.systolic_bp ?? 0),
+      unit: 'mmHg'
+    });
+  }
+  
+  if (features.spo2_anomaly) {
+    abnormalVitals.push({
+      vital: 'SpO2',
+      value: Math.round(vitals.spo2 ?? backendData.spo2 ?? 0),
+      unit: '%'
+    });
+  }
+  
+  if (features.shock_index_anomaly) {
+    abnormalVitals.push({
+      vital: 'Shock Index',
+      value: Number((vitals.shock_index ?? backendData.shock_index ?? 0).toFixed(2)),
+      unit: ''
+    });
+  }
+  
+  if (features.lactate_anomaly) {
+    abnormalVitals.push({
+      vital: 'Lactate',
+      value: Number((vitals.lactate ?? backendData.lactate ?? 0).toFixed(2)),
+      unit: 'mmol/L'
+    });
+  }
   
   return {
     patient_id: backendData.patient_id,
@@ -118,20 +171,23 @@ export function transformPatientData(backendData: any) {
     name: backendData.name || `Patient ${backendData.patient_id}`,
     bed_number: backendData.bed_number || backendData.patient_id,
     bed: backendData.bed_number || backendData.patient_id, // Add short alias
-    floor: typeof backendData.floor === 'number' ? backendData.floor : Number.parseInt((backendData.floor_id || 'F1').replace('F', ''), 10),
+    floor: typeof backendData.floor === 'number' ? backendData.floor : Number.parseInt((backendData.floor_id || 'ICU-1').replace(/\D/g, '') || '1', 10),
     latest_risk_score: riskScore,
     riskScore: riskScore, // Add camelCase alias for consistency
     risk_history: backendData.risk_history || [],
-    abnormal_vitals: backendData.abnormal_vitals || [],
+    abnormal_vitals: abnormalVitals.length > 0 ? abnormalVitals : (backendData.abnormal_vitals || []),
+    anomaly_flag: features.anomaly_flag || false,
     age: backendData.age || 45, // Default age if not provided
     alerts: backendData.alerts || [], // Add alerts array
     vitals: {
-      heart_rate: Math.round(backendData.heart_rate ?? backendData.vitals?.heart_rate ?? backendData.rolling_hr ?? 75),
-      systolic_bp: Math.round(backendData.systolic_bp ?? backendData.vitals?.systolic_bp ?? backendData.rolling_sbp ?? 120),
-      diastolic_bp: Math.round(backendData.diastolic_bp ?? backendData.vitals?.diastolic_bp ?? (backendData.systolic_bp || 120) * 0.6),
-      spo2: Math.round(backendData.spo2 ?? backendData.vitals?.spo2 ?? backendData.rolling_spo2 ?? 98),
-      respiratory_rate: Math.round(backendData.respiratory_rate ?? backendData.vitals?.respiratory_rate ?? 16),
-      temperature: Number((backendData.temperature ?? backendData.vitals?.temperature ?? 37).toFixed(1)),
+      heart_rate: Math.round(vitals.heart_rate ?? backendData.heart_rate ?? backendData.rolling_hr ?? 75),
+      systolic_bp: Math.round(vitals.systolic_bp ?? backendData.systolic_bp ?? backendData.rolling_sbp ?? 120),
+      diastolic_bp: Math.round(vitals.diastolic_bp ?? backendData.diastolic_bp ?? (backendData.systolic_bp || 120) * 0.6),
+      spo2: Math.round(vitals.spo2 ?? backendData.spo2 ?? backendData.rolling_spo2 ?? 98),
+      respiratory_rate: Math.round(vitals.respiratory_rate ?? backendData.respiratory_rate ?? 16),
+      temperature: Number((vitals.temperature ?? backendData.temperature ?? 37).toFixed(1)),
+      lactate: Number((vitals.lactate ?? backendData.lactate ?? 1.0).toFixed(2)),
+      shock_index: Number((vitals.shock_index ?? backendData.shock_index ?? 0.5).toFixed(2)),
     },
   };
 }

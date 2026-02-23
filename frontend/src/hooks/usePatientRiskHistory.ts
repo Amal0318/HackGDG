@@ -11,7 +11,7 @@ interface PatientRiskHistory {
   [patientId: string]: RiskDataPoint[];
 }
 
-const MAX_HISTORY_POINTS = 60; // Keep last 60 data points (2 minutes at 2-second intervals)
+const MAX_HISTORY_POINTS = 450; // Keep last 450 data points (15 minutes at 2-second intervals)
 
 export function usePatientRiskHistory(patientId?: string) {
   const [riskHistory, setRiskHistory] = useState<PatientRiskHistory>({});

@@ -1088,6 +1088,15 @@ async def main():
     """Main entry point"""
     simulator = VitalSimulator()
     
+    # Start Developer Tools Scenario API
+    try:
+        from scenario_api import ScenarioControlAPI
+        scenario_api = ScenarioControlAPI(simulator)
+        scenario_api.start(port=5001, host='0.0.0.0')
+        logger.info("🎮 Developer Tools API started on port 5001")
+    except Exception as e:
+        logger.warning(f"Could not start Scenario API: {e}")
+    
     try:
         await simulator.start()
     except KeyboardInterrupt:

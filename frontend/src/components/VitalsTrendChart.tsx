@@ -149,6 +149,8 @@ export default function VitalsTrendChart({
             tick={{ fontSize: 10, fill: '#9ca3af' }}
             tickLine={false}
             axisLine={{ stroke: '#e5e7eb' }}
+            interval="preserveStartEnd"
+            minTickGap={30}
           />
           <YAxis 
             tick={{ fontSize: 10, fill: '#9ca3af' }}

@@ -49,24 +49,24 @@ export default function VitalSign({
       <span className="text-[10px] text-gray-500 font-medium uppercase tracking-wide">
         {label}
       </span>
-      <div className="flex items-baseline gap-2">
+      <div className="flex items-baseline gap-1 flex-wrap">
         <motion.span 
           key={value}
           initial={{ scale: 1.2, color: '#3B82F6' }}
           animate={{ scale: 1, color: 'inherit' }}
           transition={{ duration: 0.3 }}
           className={clsx(
-            'text-2xl font-bold font-mono transition-colors duration-300',
+            'text-lg font-bold font-mono transition-colors duration-300',
             statusColors[status],
             status !== 'normal' && 'animate-pulse'
           )}
         >
           {value}
         </motion.span>
-        <span className="text-xs text-gray-500 font-medium">
+        <span className="text-[10px] text-gray-500 font-medium">
           {unit}
         </span>
-        <TrendIcon className={clsx('w-4 h-4 ml-auto', trendColors[trend])} />
+        <TrendIcon className={clsx('w-3 h-3 ml-auto', trendColors[trend])} />
       </div>
       {trendData && trendData.length > 0 && (
         <div className="h-6 -mx-1">

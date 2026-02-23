@@ -1,6 +1,7 @@
 // Hook for managing patient vitals history with WebSocket updates
 import { useState, useEffect, useCallback } from 'react';
 import { useWebSocket } from './useWebSocket';
+import { patientsAPI } from '../services/api';
 
 interface VitalsDataPoint {
   timestamp: string;
@@ -16,7 +17,7 @@ interface PatientVitalsHistory {
   [patientId: string]: VitalsDataPoint[];
 }
 
-const MAX_VITALS_HISTORY_POINTS = 60; // Keep last 60 data points (2 minutes at 2-second intervals)
+const MAX_VITALS_HISTORY_POINTS = 450; // Keep last 450 data points (15 minutes at 2-second intervals)
 
 export function usePatientVitalsHistory(patientId?: string) {
   const [vitalsHistory, setVitalsHistory] = useState<PatientVitalsHistory>({});
@@ -76,10 +77,46 @@ export function usePatientVitalsHistory(patientId?: string) {
     },
   });
 
-  // Subscribe to patient when patientId changes
+  // Subscribe to patient when patientId changes and fetch initial history
   useEffect(() => {
     if (isConnected && patientId) {
       subscribeToPatient(patientId);
+      
+      // Fetch initial vitals history from API
+      patientsAPI.getVitalsHistory(patientId)
+        .then((history) => {
+          if (history && history.length > 0) {
+            console.log(`📊 Fetched ${history.length} historical vitals points for ${patientId}`);
+            console.log('Sample data point:', JSON.stringify(history[0]));
+            
+            const formattedHistory: VitalsDataPoint[] = history.map((point: any) => {
+              // Backend returns vitals nested inside a 'vitals' object
+              const vitals = point.vitals || point;
+              return {
+                timestamp: point.timestamp || new Date().toISOString(),
+                heart_rate: vitals.heart_rate || vitals.rolling_hr || 0,
+                systolic_bp: vitals.systolic_bp || vitals.rolling_sbp || 0,
+                diastolic_bp: vitals.diastolic_bp || 80,
+                spo2: vitals.spo2 || vitals.rolling_spo2 || 0,
+                respiratory_rate: vitals.respiratory_rate || 16,
+                temperature: vitals.temperature || 37.0,
+              };
+            });
+            
+            console.log(`✅ Formatted ${formattedHistory.length} vitals points for chart`);
+            console.log('Sample formatted point:', JSON.stringify(formattedHistory[0]));
+            
+            setVitalsHistory(prev => ({
+              ...prev,
+              [patientId]: formattedHistory,
+            }));
+          } else {
+            console.warn(`No vitals history returned for ${patientId}`);
+          }
+        })
+        .catch((error) => {
+          console.error(`Error fetching vitals history for ${patientId}:`, error);
+        });
     }
   }, [isConnected, patientId, subscribeToPatient]);
 

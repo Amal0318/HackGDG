@@ -18,7 +18,10 @@ export interface Patient {
     spo2: number;
     respiratory_rate: number;
     temperature: number;
+    lactate?: number;
+    shock_index?: number;
   };
+  anomaly_flag?: boolean;
   alert_acknowledged?: boolean;
   acknowledged_by?: string;
   acknowledged_at?: string;

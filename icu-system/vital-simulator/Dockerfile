@@ -11,8 +11,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY app/ ./app/
 
-# Expose port (internal communication)
+# Expose ports
 EXPOSE 8000
+EXPOSE 5001
 
-# Run the new drift-based simulator
-CMD ["python", "app/main_new.py"]
+# Run the simulator with scenario API
+CMD ["python", "app/main.py"]

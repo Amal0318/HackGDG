@@ -1,478 +1,376 @@
 """
-VitalX ML Service - FastAPI Inference Engine
-=============================================
-
-Real-time deterioration prediction using trained LSTM model.
-
-Endpoints:
-- POST /predict - Single sequence prediction
-- POST /predict/batch - Batch prediction
-- GET /health - Health check
-- GET /model/info - Model information
+VitalX ML Service - Real-time Sepsis Risk Prediction
+Uses trained LSTM model on MIMIC-IV dataset
+Consumes: vitals_enriched from Pathway
+Publishes: vitals_predictions to Kafka
 """
 
+import json
+import logging
 import os
 import sys
-import logging
-import json
-import pickle
-import numpy as np
-import torch
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
-from typing import List, Optional
+import time
+from collections import deque, defaultdict
 from datetime import datetime
 
-# Add parent directory to path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import numpy as np
+import pandas as pd
+from kafka import KafkaConsumer, KafkaProducer
 
-from models.lstm_model import LSTMAttentionModel, LogisticRegressionFallback
-from app.kafka_consumer import start_ml_consumer, stop_ml_consumer
+# Import VitalX inference module
+try:
+    from inference import SepsisPredictor
+    MODEL_AVAILABLE = True
+except Exception as e:
+    print(f"⚠️ Could not import SepsisPredictor: {e}")
+    MODEL_AVAILABLE = False
+
+import config
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
-logger = logging.getLogger("ml-service")
-
-# Initialize FastAPI app
-app = FastAPI(
-    title="VitalX ML Service",
-    description="LSTM-based ICU Deterioration Prediction Engine",
-    version="1.0.0"
-)
-
-# ==============================
-# GLOBAL STATE
-# ==============================
+logger = logging.getLogger(__name__)
 
 
-class ModelState:
-    """Global model state."""
-    lstm_model = None
-    fallback_model = None
-    scaler = None
-    config = None
-    # Prefer CUDA GPU, fallback to CPU for inference only
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model_loaded = False
-    fallback_loaded = False
+class RealtimeMLService:
+    """
+    Real-time ML service that:
+    1. Consumes enriched vitals from Pathway
+    2. Maintains 24-hour buffer per patient
+    3. Generates sepsis risk predictions using trained LSTM
+    4. Publishes predictions to Kafka
+    """
     
     def __init__(self):
-        if torch.cuda.is_available():
-            logger.info(f"🚀 Using CUDA GPU: {torch.cuda.get_device_name(0)}")
-            logger.info(f"   GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.2f} GB")
+        """Initialize ML service"""
+        self.kafka_broker = os.getenv('KAFKA_BROKER', 'kafka:9092')
+        self.consume_topic = os.getenv('CONSUME_TOPIC', 'vitals_enriched')
+        self.publish_topic = os.getenv('PUBLISH_TOPIC', 'vitals_predictions')
+        
+        # Per-patient data buffers (24-hour sliding window)
+        self.patient_buffers = defaultdict(lambda: deque(maxlen=config.SEQUENCE_LENGTH))
+        
+        # Initialize predictor
+        self.predictor = None
+        self.use_trained_model = False
+        
+        if MODEL_AVAILABLE:
+            try:
+                logger.info("🔧 Initializing VitalX Sepsis Predictor...")
+                self.predictor = SepsisPredictor()
+                self.use_trained_model = True
+                logger.info("✅ Trained LSTM model loaded successfully!")
+            except Exception as e:
+                logger.error(f"⚠️ Failed to load trained model: {e}")
+                logger.info("Continuing with fallback heuristic...")
         else:
-            logger.warning("⚠️  CUDA GPU not available, using CPU (slower inference)")
-
-state = ModelState()
-
-
-# ==============================
-# PYDANTIC MODELS
-# ==============================
-
-
-class VitalSequence(BaseModel):
-    """Single vital sign sequence (60 timesteps × 14 features)."""
-    sequence: List[List[float]] = Field(
-        ..., description="60x14 array of vitals"
-    )
-    patient_id: Optional[str] = Field(
-        None, description="Patient identifier"
-    )
-    
-    class Config:
-        schema_extra = {
-            "example": {
-                "sequence": [
-                    [85.0, 120.0, 80.0, 98.0, 16.0, 37.0, 0.71]
-                    + [0.0] * 7
-                ] * 60,
-                "patient_id": "P001"
-            }
+            logger.warning("⚠️ Trained model not available, using fallback heuristic")
+        
+        # Kafka consumer for enriched vitals
+        self.consumer = None
+        self.producer = None
+        
+        # Statistics
+        self.stats = {
+            'events_processed': 0,
+            'predictions_made': 0,
+            'errors': 0,
+            'start_time': time.time()
         }
-
-
-class PredictionResponse(BaseModel):
-    """Prediction response."""
-    patient_id: Optional[str]
-    risk_score: float = Field(
-        ..., description="Deterioration probability [0, 1]"
-    )
-    risk_level: str = Field(..., description="LOW, MEDIUM, or HIGH")
-    timestamp: str
-    model_used: str = Field(..., description="lstm or fallback")
-
-
-class BatchPredictionRequest(BaseModel):
-    """Batch prediction request."""
-    sequences: List[VitalSequence]
-
-
-class BatchPredictionResponse(BaseModel):
-    """Batch prediction response."""
-    predictions: List[PredictionResponse]
-    total: int
-
-
-class ModelInfo(BaseModel):
-    """Model information."""
-    lstm_loaded: bool
-    fallback_loaded: bool
-    device: str
-    lstm_parameters: Optional[int]
-    config: Optional[dict]
-
-
-# ==============================
-# MODEL LOADING
-# ==============================
-def load_lstm_model():
-    """Load trained LSTM model."""
-    try:
-        model_path = "model.pth"
-        config_path = "feature_config.json"
+    
+    def connect_kafka(self):
+        """Initialize Kafka consumer and producer"""
+        logger.info(f"Connecting to Kafka broker: {self.kafka_broker}")
         
-        if not os.path.exists(model_path):
-            logger.warning(f"LSTM model not found at {model_path}")
-            return False
-        
-        # Load config
-        if os.path.exists(config_path):
-            with open(config_path, 'r') as f:
-                state.config = json.load(f)
-        
-        # Load checkpoint
-        checkpoint = torch.load(model_path, map_location=state.device, weights_only=False)
-        
-        # Create model
-        model_config = checkpoint.get('config', {})
-        state.lstm_model = LSTMAttentionModel(
-            input_size=model_config.get('input_size', 14),
-            hidden_size=model_config.get('hidden_size', 128),
-            num_layers=model_config.get('num_layers', 2),
-            dropout=model_config.get('dropout', 0.3)
+        # Consumer
+        self.consumer = KafkaConsumer(
+            self.consume_topic,
+            bootstrap_servers=[self.kafka_broker],
+            value_deserializer=lambda m: json.loads(m.decode('utf-8')),
+            auto_offset_reset='latest',
+            enable_auto_commit=True,
+            group_id='ml-service-group',
+            max_poll_records=100,
+            consumer_timeout_ms=1000
         )
         
-        # Load weights
-        state.lstm_model.load_state_dict(checkpoint['model_state_dict'])
-        state.lstm_model.to(state.device)
-        state.lstm_model.eval()
+        # Producer
+        self.producer = KafkaProducer(
+            bootstrap_servers=[self.kafka_broker],
+            value_serializer=lambda v: json.dumps(v).encode('utf-8'),
+            acks=1,
+            compression_type='gzip'
+        )
         
-        state.model_loaded = True
-        logger.info(f"✅ LSTM model loaded successfully from {model_path}")
-        logger.info(f"   Device: {state.device}")
-        logger.info(f"   Best ROC-AUC: {checkpoint.get('best_roc_auc', 'N/A')}")
-        
-        return True
-        
-    except Exception as e:
-        logger.error(f"❌ Failed to load LSTM model: {e}")
-        return False
-
-
-def load_fallback_model():
-    """Load logistic regression fallback."""
-    try:
-        fallback_path = "../training/saved_models/fallback_logistic.pkl"
-        
-        if not os.path.exists(fallback_path):
-            logger.warning(f"Fallback model not found at {fallback_path}")
-            return False
-        
-        with open(fallback_path, 'rb') as f:
-            data = pickle.load(f)
-        
-        state.fallback_model = LogisticRegressionFallback()
-        state.fallback_model.model = data['model']
-        state.fallback_model.scaler = data['scaler']
-        state.fallback_model.is_fitted = data['is_fitted']
-        
-        state.fallback_loaded = True
-        logger.info(f"✅ Fallback model loaded successfully from {fallback_path}")
-        
-        return True
-        
-    except Exception as e:
-        logger.error(f"❌ Failed to load fallback model: {e}")
-        return False
-
-
-def load_scaler():
-    """Load feature scaler with robust error handling."""
-    import joblib
-    import pickle
-    import numpy as np
+        logger.info(f"✅ Connected to Kafka")
+        logger.info(f"   Consuming: {self.consume_topic}")
+        logger.info(f"   Publishing: {self.publish_topic}")
     
-    scaler_path = "scaler.pkl"
+    def extract_features_from_vitals(self, vitals_data):
+        """
+        Extract 34 features from enriched vitals data
+        
+        Args:
+            vitals_data: Dict containing vitals from simulator + pathway enrichment
+        
+        Returns:
+            dict: Mapped features ready for model input
+        """
+        features = {}
+        
+        # Map simulator fields to model features using config mapping
+        for sim_field, model_field in config.SIMULATOR_TO_MODEL_MAPPING.items():
+            features[model_field] = vitals_data.get(sim_field, 0.0)
+        
+        # Add derived features if present (Pathway may compute these)
+        for derived_feat in config.DERIVED_FEATURES:
+            if derived_feat in vitals_data:
+                features[derived_feat] = vitals_data[derived_feat]
+        
+        # Add missingness indicators if present
+        for missing_feat in config.MISSINGNESS_FEATURES:
+            if missing_feat in vitals_data:
+                features[missing_feat] = vitals_data[missing_feat]
+        
+        return features
     
-    if not os.path.exists(scaler_path):
-        logger.warning("⚠️  Scaler file not found at scaler.pkl")
-        state.scaler = None
-        logger.warning("⚠️  Continuing without scaler (accuracy may degrade)")
-        return False
+    def compute_derived_features(self, features_list):
+        """
+        Compute derived features for a sequence of readings
+        
+        Args:
+            features_list: List of feature dicts (chronological order)
+        
+        Returns:
+            numpy array: (seq_len, n_features) with all 34 features
+        """
+        df = pd.DataFrame(features_list)
+        
+        # Ensure all base features exist
+        for feat in config.BASE_FEATURES:
+            if feat not in df.columns:
+                df[feat] = 0.0
+        
+        # Compute derived features
+        # ShockIndex = HR / SBP
+        df['ShockIndex'] = df['HR'] / (df['SBP'] + 1e-6)
+        
+        # Deltas (change from previous reading)
+        df['HR_delta'] = df['HR'].diff().fillna(0)
+        df['SBP_delta'] = df['SBP'].diff().fillna(0)
+        df['ShockIndex_delta'] = df['ShockIndex'].diff().fillna(0)
+        
+        # Rolling means (last 6 hours)
+        df['RollingMean_HR'] = df['HR'].rolling(window=min(6, len(df)), min_periods=1).mean()
+        df['RollingMean_SBP'] = df['SBP'].rolling(window=min(6, len(df)), min_periods=1).mean()
+        
+        # Compute missingness indicators
+        for vital in config.CORE_VITALS:
+            df[f'{vital}_missing'] = ((df[vital] == 0) | df[vital].isna()).astype(int)
+        
+        for lab in config.KEY_LABS:
+            df[f'{lab}_missing'] = ((df[lab] == 0) | df[lab].isna()).astype(int)
+        
+        # Fill any remaining NaN
+        df = df.fillna(0)
+        
+        # Extract features in correct order
+        feature_matrix = df[config.ALL_FEATURES].values
+        
+        return feature_matrix
     
-    try:
-        # Fix for NumPy 2.0+ compatibility
-        # Add missing ComplexWarning attribute if it doesn't exist
-        if not hasattr(np, 'ComplexWarning'):
-            np.ComplexWarning = np.VisibleDeprecationWarning
+    def process_enriched_event(self, event):
+        """
+        Process enriched vitals event and generate prediction
+        
+        Args:
+            event: Enriched vitals data from Pathway
+        """
+        try:
+            patient_id = event.get('patient_id')
+            if not patient_id:
+                logger.warning("Event missing patient_id")
+                return
             
-        # Try loading with joblib
-        state.scaler = joblib.load(scaler_path)
-        logger.info("✅ Feature scaler loaded successfully")
-        return True
-        
-    except Exception as e:
-        logger.error(f"❌ Failed to load scaler: {e}")
-        state.scaler = None
-        logger.warning("⚠️  Continuing without scaler (accuracy may degrade)")
-        return False
-
-
-# ==============================
-# STARTUP
-# ==============================
-@app.on_event("startup")
-async def startup_event():
-    """Load models on startup."""
-    logger.info("=" * 70)
-    logger.info("VitalX ML Service Starting...")
-    logger.info("=" * 70)
-    
-    # Load models
-    load_scaler()
-    load_lstm_model()
-    load_fallback_model()
-    
-    if not state.model_loaded and not state.fallback_loaded:
-        logger.error("❌ No models loaded! Service may not function correctly.")
-    else:
-        # Start Kafka consumer for real-time predictions
-        logger.info("Starting Kafka consumer for real-time predictions...")
-        logger.info(f"LSTM model loaded: {state.model_loaded}")
-        logger.info(f"Model device: {state.device}")
-        try:
-            predict_fn = lambda seq: predict_lstm(seq) if state.model_loaded else 0.0
-            logger.info(f"Created predictor function (will use LSTM: {state.model_loaded})")
-            start_ml_consumer(predict_fn=predict_fn)
-            logger.info("✅ Kafka consumer started")
+            # Extract features from event
+            features = self.extract_features_from_vitals(event)
+            
+            # Add to patient buffer
+            self.patient_buffers[patient_id].append(features)
+            
+            # Check if we have enough data for prediction (24 hours)
+            buffer_len = len(self.patient_buffers[patient_id])
+            
+            if buffer_len >= config.SEQUENCE_LENGTH:
+                # Build feature matrix
+                features_list = list(self.patient_buffers[patient_id])
+                feature_matrix = self.compute_derived_features(features_list)
+                
+                # Generate prediction
+                if self.use_trained_model and self.predictor:
+                    try:
+                        # Use trained LSTM model
+                        risk_score = self.predictor.predict(feature_matrix)
+                        # Debug: Log prediction details
+                        if self.stats['predictions_made'] % 50 == 0:
+                            logger.info(f"🔍 DEBUG Patient {patient_id}: Risk={risk_score:.4f}, HR={event.get('heart_rate')}, BP={event.get('systolic_bp')}, Lactate={event.get('lactate')}")
+                    except Exception as e:
+                        logger.error(f"Model prediction error: {e}, using fallback")
+                        risk_score = self.fallback_risk_prediction(event)
+                else:
+                    # Fallback heuristic
+                    risk_score = self.fallback_risk_prediction(event)
+                
+                # Create prediction event
+                prediction = {
+                    'patient_id': patient_id,
+                    'timestamp': event.get('timestamp', datetime.utcnow().isoformat()),
+                    'risk_score': float(risk_score),
+                    'model_type': 'LSTM_MIMIC_IV' if self.use_trained_model else 'HEURISTIC',
+                    'confidence': 0.95 if self.use_trained_model else 0.7,
+                    'buffer_length': buffer_len,
+                    'vitals': {
+                        'heart_rate': event.get('heart_rate', 0),
+                        'spo2': event.get('spo2', 0),
+                        'temperature': event.get('temperature', 0),
+                        'systolic_bp': event.get('systolic_bp', 0),
+                        'respiratory_rate': event.get('respiratory_rate', 0),
+                        'lactate': event.get('lactate', 0)
+                    }
+                }
+                
+                # Publish prediction
+                self.producer.send(self.publish_topic, value=prediction)
+                
+                self.stats['predictions_made'] += 1
+                
+                # Log high-risk predictions
+                if risk_score > 0.7:
+                    logger.warning(
+                        f"⚠️ HIGH RISK: Patient {patient_id} - "
+                        f"Risk={risk_score:.3f} "
+                        f"(HR={event.get('heart_rate')}, "
+                        f"BP={event.get('systolic_bp')}, "
+                        f"Lactate={event.get('lactate')})"
+                    )
+            
+            self.stats['events_processed'] += 1
+            
         except Exception as e:
-            logger.error(f"❌ Failed to start Kafka consumer: {e}", exc_info=True)
+            logger.error(f"Error processing event: {e}")
+            self.stats['errors'] += 1
     
-    logger.info("=" * 70)
-    logger.info("ML Service Ready")
-    logger.info("=" * 70)
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Cleanup on shutdown."""
-    logger.info("Shutting down ML Service...")
-    stop_ml_consumer()
-    logger.info("✅ ML Service stopped")
-
-
-# ==============================
-# HELPER FUNCTIONS
-# ==============================
-def validate_sequence(sequence: List[List[float]]) -> bool:
-    """Validate sequence shape."""
-    if len(sequence) != 60:
-        return False
-    if not all(len(timestep) == 14 for timestep in sequence):
-        return False
-    return True
-
-
-def classify_risk(risk_score: float) -> str:
-    """Classify risk level."""
-    if risk_score < 0.3:
-        return "LOW"
-    elif risk_score < 0.7:
-        return "MEDIUM"
-    else:
-        return "HIGH"
-
-
-def predict_lstm(sequence: np.ndarray) -> float:
-    """Predict using LSTM model."""
-    logger.info(f"🔍 predict_lstm called with sequence shape: {sequence.shape}")
-    logger.info(f"🔍 Sequence stats - min: {sequence.min():.4f}, max: {sequence.max():.4f}, mean: {sequence.mean():.4f}")
-    
-    # Apply scaling if scaler is available
-    if state.scaler is not None:
-        # Reshape for scaling: (60, 14) -> (60*14,) -> scale -> (60, 14)
-        original_shape = sequence.shape
-        sequence_flat = sequence.reshape(-1, sequence.shape[-1])
-        sequence_scaled = state.scaler.transform(sequence_flat)
-        sequence = sequence_scaled.reshape(original_shape)
-        logger.debug(f"Scaled sequence range: [{sequence.min():.4f}, {sequence.max():.4f}]")
-    else:
-        logger.warning("⚠️ No scaler available - using raw values")
-    
-    # Convert to tensor
-    X = torch.FloatTensor(sequence).unsqueeze(0).to(state.device)  # (1, 60, 14)
-    logger.info(f"🔍 Tensor shape: {X.shape}, device: {X.device}")
-    
-    # Predict
-    with torch.no_grad():
-        output = state.lstm_model(X)
-    
-    risk_score = output.item()
-    logger.info(f"🎯 Raw LSTM output: {risk_score:.8f}")
-    
-    # Ensure output is in valid range and apply sigmoid if needed
-    if risk_score < 0 or risk_score > 1:
-        logger.warning(f"⚠️ Risk score {risk_score} out of range, applying sigmoid")
-        risk_score = torch.sigmoid(torch.tensor(risk_score)).item()
-        logger.info(f"🎯 After sigmoid: {risk_score:.8f}")
-    
-    return risk_score
-
-
-def predict_fallback(sequence: np.ndarray) -> float:
-    """Predict using fallback model."""
-    # Reshape for fallback
-    X = sequence.reshape(1, -1)  # (1, 60*14)
-    
-    # Predict
-    risk_score = state.fallback_model.predict_proba(X)[0]
-    
-    return risk_score
-
-
-# ==============================
-# ENDPOINTS
-# ==============================
-@app.get("/")
-async def root():
-    """Root endpoint."""
-    return JSONResponse(
-        status_code=200,
-        content={
-            "service": "VitalX ML Service",
-            "version": "1.0.0",
-            "status": "operational",
-            "lstm_loaded": state.model_loaded,
-            "fallback_loaded": state.fallback_loaded
-        }
-    )
-
-
-@app.get("/health")
-async def health_check():
-    """Health check endpoint."""
-    status = "healthy" if (state.model_loaded or state.fallback_loaded) else "degraded"
-    
-    return JSONResponse(
-        status_code=200,
-        content={
-            "status": status,
-            "service": "ml-service",
-            "lstm_available": state.model_loaded,
-            "fallback_available": state.fallback_loaded,
-            "timestamp": datetime.now().isoformat()
-        }
-    )
-
-
-@app.get("/model/info", response_model=ModelInfo)
-async def model_info():
-    """Get model information."""
-    lstm_params = None
-    if state.lstm_model:
-        lstm_params = sum(p.numel() for p in state.lstm_model.parameters())
-    
-    return ModelInfo(
-        lstm_loaded=state.model_loaded,
-        fallback_loaded=state.fallback_loaded,
-        device=str(state.device),
-        lstm_parameters=lstm_params,
-        config=state.config
-    )
-
-
-@app.post("/predict", response_model=PredictionResponse)
-async def predict(vital_sequence: VitalSequence):
-    """
-    Predict deterioration risk for a single sequence.
-    
-    Input: 60-second vital sign sequence (60 × 14)
-    Output: Risk score [0, 1]
-    """
-    # Validate
-    if not validate_sequence(vital_sequence.sequence):
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid sequence shape. Expected (60, 14)"
-        )
-    
-    # Convert to numpy
-    sequence = np.array(vital_sequence.sequence, dtype=np.float32)
-    
-    # Predict
-    try:
-        if state.model_loaded:
-            risk_score = predict_lstm(sequence)
-            model_used = "lstm"
-        elif state.fallback_loaded:
-            risk_score = predict_fallback(sequence)
-            model_used = "fallback"
-        else:
-            raise HTTPException(status_code=503, detail="No model available")
+    def fallback_risk_prediction(self, vitals):
+        """
+        Simple heuristic-based risk prediction (fallback)
         
-        # Ensure risk_score is in [0, 1]
-        risk_score = float(np.clip(risk_score, 0.0, 1.0))
+        Args:
+            vitals: Current vitals dictionary
         
-        return PredictionResponse(
-            patient_id=vital_sequence.patient_id,
-            risk_score=risk_score,
-            risk_level=classify_risk(risk_score),
-            timestamp=datetime.now().isoformat(),
-            model_used=model_used
-        )
+        Returns:
+            float: Risk score 0-1
+        """
+        risk = 0.0
         
-    except Exception as e:
-        logger.error(f"Prediction error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/predict/batch", response_model=BatchPredictionResponse)
-async def predict_batch(request: BatchPredictionRequest):
-    """
-    Batch prediction for multiple sequences.
-    """
-    predictions = []
+        # Heart rate
+        hr = vitals.get('heart_rate', 70)
+        if hr > 100:
+            risk += 0.15
+        if hr > 120:
+            risk += 0.15
+        
+        # Blood pressure
+        sbp = vitals.get('systolic_bp', 120)
+        if sbp < 90:
+            risk += 0.2
+        
+        # Oxygen saturation
+        spo2 = vitals.get('spo2', 98)
+        if spo2 < 92:
+            risk += 0.15
+        if spo2 < 88:
+            risk += 0.15
+        
+        # Temperature
+        temp = vitals.get('temperature', 37.0)
+        if temp > 38.0 or temp < 36.0:
+            risk += 0.1
+        
+        # Lactate
+        lactate = vitals.get('lactate', 1.0)
+        if lactate > 2.0:
+            risk += 0.15
+        if lactate > 4.0:
+            risk += 0.2
+        
+        # Respiratory rate
+        rr = vitals.get('respiratory_rate', 16)
+        if rr > 22:
+            risk += 0.1
+        
+        return min(risk, 1.0)
     
-    for vital_seq in request.sequences:
+    def run(self):
+        """Main event loop"""
+        logger.info("="*80)
+        logger.info("VitalX ML Service - Real-time Sepsis Risk Prediction")
+        logger.info("="*80)
+        logger.info(f"Model type: {'LSTM (trained on MIMIC-IV)' if self.use_trained_model else 'Fallback heuristic'}")
+        logger.info(f"Features: {config.get_feature_count()}")
+        logger.info(f"Sequence length: {config.SEQUENCE_LENGTH} hours")
+        logger.info("="*80)
+        
+        # Connect to Kafka
+        self.connect_kafka()
+        
+        logger.info("🚀 ML service started, listening for vitals...")
+        
         try:
-            pred = await predict(vital_seq)
-            predictions.append(pred)
-        except HTTPException as e:
-            # Skip invalid sequences
-            logger.warning(f"Skipping invalid sequence: {e.detail}")
-            continue
-    
-    return BatchPredictionResponse(
-        predictions=predictions,
-        total=len(predictions)
-    )
+            while True:
+                # Poll for messages
+                message_batch = self.consumer.poll(timeout_ms=1000)
+                
+                for topic_partition, messages in message_batch.items():
+                    for message in messages:
+                        self.process_enriched_event(message.value)
+                
+                # Log stats every 100 events
+                if self.stats['events_processed'] % 100 == 0 and self.stats['events_processed'] > 0:
+                    elapsed = time.time() - self.stats['start_time']
+                    logger.info(
+                        f"📊 Stats: Events={self.stats['events_processed']}, "
+                        f"Predictions={self.stats['predictions_made']}, "
+                        f"Errors={self.stats['errors']}, "
+                        f"Uptime={elapsed:.1f}s"
+                    )
+        
+        except KeyboardInterrupt:
+            logger.info("Shutting down...")
+        except Exception as e:
+            logger.error(f"Fatal error: {e}")
+            raise
+        finally:
+            if self.consumer:
+                self.consumer.close()
+            if self.producer:
+                self.producer.close()
 
 
-# ==============================
-# MAIN
-# ==============================
-if __name__ == "__main__":
-    import uvicorn
+def main():
+    """Entry point"""
+    logger.info("Starting VitalX ML Service")
+    logger.info("Trained LSTM Model on MIMIC-IV Dataset")
     
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True,
-        log_level="info"
-    )
+    try:
+        service = RealtimeMLService()
+        service.run()
+    except Exception as e:
+        logger.error(f"Failed to start service: {e}")
+        sys.exit(1)
+
+
+if __name__ == '__main__':
+    main()

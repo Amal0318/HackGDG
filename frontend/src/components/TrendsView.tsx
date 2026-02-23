@@ -1,8 +1,9 @@
-import { useState } from 'react';
-import { Activity, Heart, TrendingUp, Settings } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { Activity, Heart, TrendingUp, Settings, Clock } from 'lucide-react';
 import RiskTrendChart from './RiskTrendChart';
 import VitalsTrendChart from './VitalsTrendChart';
-import { usePollingPatientData } from '../hooks/usePollingPatientData';
+import { usePatientRiskHistory } from '../hooks/usePatientRiskHistory';
+import { usePatientVitalsHistory } from '../hooks/usePatientVitalsHistory';
 
 interface TrendsViewProps {
   patientId: string;
@@ -18,21 +19,46 @@ const VITAL_OPTIONS = [
   { key: 'temperature', label: 'Temperature', icon: TrendingUp },
 ];
 
+const TIME_RANGES = [
+  { value: 15, label: '15 sec' },
+  { value: 30, label: '30 sec' },
+  { value: 60, label: '1 min' },
+  { value: 300, label: '5 min' },
+  { value: 900, label: '15 min' },
+];
+
 export default function TrendsView({ patientId, className = '' }: TrendsViewProps) {
   const [selectedVitals, setSelectedVitals] = useState<string[]>(['heart_rate', 'systolic_bp', 'spo2']);
   const [showVitalSelector, setShowVitalSelector] = useState(false);
+  const [showTimeRangeSelector, setShowTimeRangeSelector] = useState(false);
+  const [timeRangeSeconds, setTimeRangeSeconds] = useState(15); // Default 15 seconds
   
-  // Use HTTP polling to keep data fresh without WebSockets
+  // Use WebSocket hooks for real-time data
   const {
-    isPolling,
-    getPatientRiskHistory,
-    getPatientVitalsHistory,
-  } = usePollingPatientData(patientId, 2000);
+    isLive: isRiskLive,
+    getPatientHistory: getRiskHistory,
+  } = usePatientRiskHistory(patientId);
 
-  const riskData = getPatientRiskHistory(patientId);
-  const vitalsData = getPatientVitalsHistory(patientId);
-  const isRiskLive = isPolling && riskData.length > 0;
-  const isVitalsLive = isPolling && vitalsData.length > 0;
+  const {
+    isLive: isVitalsLive,
+    getPatientVitalsHistory,
+  } = usePatientVitalsHistory(patientId);
+
+  const fullRiskData = getRiskHistory(patientId);
+  const fullVitalsData = getPatientVitalsHistory(patientId);
+  
+  // Filter data based on selected time range
+  const riskData = useMemo(() => {
+    const now = new Date();
+    const cutoffTime = new Date(now.getTime() - timeRangeSeconds * 1000);
+    return fullRiskData.filter((d: any) => new Date(d.timestamp) >= cutoffTime);
+  }, [fullRiskData, timeRangeSeconds]);
+
+  const vitalsData = useMemo(() => {
+    const now = new Date();
+    const cutoffTime = new Date(now.getTime() - timeRangeSeconds * 1000);
+    return fullVitalsData.filter((d: any) => new Date(d.timestamp) >= cutoffTime);
+  }, [fullVitalsData, timeRangeSeconds]);
 
   const toggleVital = (vitalKey: string) => {
     setSelectedVitals(prev => {
@@ -62,6 +88,41 @@ export default function TrendsView({ patientId, className = '' }: TrendsViewProp
               <div className={`w-2 h-2 rounded-full ${isVitalsLive ? 'bg-green-500' : 'bg-gray-400'}`} />
               <span className="text-gray-600">Vitals</span>
             </div>
+          </div>
+
+          {/* Time Range Selector */}
+          <div className="relative">
+            <button
+              onClick={() => setShowTimeRangeSelector(!showTimeRangeSelector)}
+              className="flex items-center gap-1 px-3 py-1.5 text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg transition-colors"
+            >
+              <Clock className="w-3 h-3" />
+              {TIME_RANGES.find(r => r.value === timeRangeSeconds)?.label || '15 sec'}
+            </button>
+            
+            {showTimeRangeSelector && (
+              <div className="absolute top-full right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-10 min-w-32">
+                <div className="p-2">
+                  <div className="text-xs font-medium text-gray-700 mb-2 px-1">Time Range</div>
+                  <div className="space-y-1">
+                    {TIME_RANGES.map(({ value, label }) => (
+                      <button
+                        key={value}
+                        onClick={() => {
+                          setTimeRangeSeconds(value);
+                          setShowTimeRangeSelector(false);
+                        }}
+                        className={`w-full text-left text-xs px-2 py-1.5 rounded hover:bg-gray-50 ${
+                          timeRangeSeconds === value ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
           
           {/* Vitals Selector */}
@@ -173,9 +234,7 @@ export default function TrendsView({ patientId, className = '' }: TrendsViewProp
             </div>
             <div>
               <span className="text-gray-600">Time Range:</span>
-              <span className="font-medium ml-1">
-                {Math.max(riskData.length, vitalsData.length) * 2}s
-              </span>
+              <span className="font-medium ml-1">{TIME_RANGES.find(r => r.value === timeRangeSeconds)?.label}</span>
             </div>
             <div>
               <span className="text-gray-600">Update Rate:</span>

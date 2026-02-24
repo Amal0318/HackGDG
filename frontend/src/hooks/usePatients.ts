@@ -44,13 +44,17 @@ export function usePatients(options: UsePatientOptions = {}) {
     if (!rawPatient) {
       return;
     }
+    console.log('[usePatients] Upserting patient:', rawPatient.patient_id);
     const transformed = transformPatientData(rawPatient);
+    console.log('[usePatients] Transformed patient:', transformed.patient_id, 'HR:', transformed.vitals.heart_rate);
     setPatients((prev) => {
       const existingIndex = prev.findIndex((p) => p.patient_id === transformed.patient_id);
       let next: Patient[];
       if (existingIndex === -1) {
+        console.log('[usePatients] Adding new patient:', transformed.patient_id);
         next = [...prev, transformed];
       } else {
+        console.log('[usePatients] Updating existing patient:', transformed.patient_id);
         next = [...prev];
         next[existingIndex] = {
           ...next[existingIndex],
@@ -69,7 +73,10 @@ export function usePatients(options: UsePatientOptions = {}) {
       return;
     }
 
+    console.log('[usePatients] Received message:', message.type, message);
+
     if (message.type === 'initial_data' && Array.isArray(message.patients)) {
+      console.log('[usePatients] Processing initial data:', message.patients.length, 'patients');
       message.patients.forEach((patient: any) => {
         if (!options.floorId || patient.floor_id === options.floorId || patient.floor === options.floorId) {
           upsertPatient(patient);
@@ -80,6 +87,7 @@ export function usePatients(options: UsePatientOptions = {}) {
     }
 
     if ((message.type === 'patient_update' || message.type === 'floor_update') && message.data) {
+      console.log('[usePatients] Processing update for:', message.data.patient_id);
       if (!options.floorId || message.floor_id === options.floorId || message.data.floor_id === options.floorId) {
         upsertPatient(message.data);
       }

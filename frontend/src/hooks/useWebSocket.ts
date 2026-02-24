@@ -93,16 +93,20 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
 
   const poll = useCallback(async () => {
     if (isFetchingRef.current) {
+      console.log('[useWebSocket] Skipping poll - already fetching');
       return;
     }
     isFetchingRef.current = true;
+    console.log('[useWebSocket] Starting poll...');
 
     try {
       const floors = await floorsAPI.getAll();
+      console.log('[useWebSocket] Fetched floors:', floors.length);
       const floorBatches = await Promise.all(
         floors.map(async (floor) => {
           try {
             const patients = await floorsAPI.getPatients(floor.id);
+            console.log(`[useWebSocket] Fetched ${patients.length} patients from floor ${floor.id}`);
             return patients.map((patient) => ({
               ...patient,
               floor_id: patient.floor_id || floor.id,
@@ -115,8 +119,10 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
       );
 
       const allPatients = floorBatches.flat();
+      console.log('[useWebSocket] Total patients fetched:', allPatients.length);
 
       if (!hasSentInitialRef.current) {
+        console.log('[useWebSocket] Emitting initial payload');
         emitInitialPayload(allPatients);
         hasSentInitialRef.current = true;
       }
@@ -124,6 +130,11 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
       const subscribedPatients = patientSubscriptionsRef.current;
       const subscribedFloors = floorSubscriptionsRef.current;
       const hasSubscriptions = subscribedPatients.size > 0 || subscribedFloors.size > 0;
+
+      console.log('[useWebSocket] Subscriptions:', {
+        patients: Array.from(subscribedPatients),
+        floors: Array.from(subscribedFloors),
+      });
 
       allPatients.forEach((patient) => {
         const fallbackFloor = (patient as any).floor ?? (patient as any).floorId;
@@ -137,6 +148,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
       });
 
       updateConnectionState(true);
+      console.log('[useWebSocket] Poll complete - emitted updates for', allPatients.length, 'patients');
     } catch (error) {
       console.error('HTTPS polling failed:', error);
       updateConnectionState(false);
@@ -166,10 +178,14 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
       return;
     }
     hasSentInitialRef.current = false;
+    console.log('[useWebSocket] Starting polling with interval:', reconnectInterval);
     poll();
 
     if (autoReconnect) {
-      pollTimerRef.current = setInterval(poll, reconnectInterval);
+      pollTimerRef.current = setInterval(() => {
+        console.log('[useWebSocket] Polling tick');
+        poll();
+      }, reconnectInterval);
     }
   }, [autoReconnect, poll, reconnectInterval]);
 

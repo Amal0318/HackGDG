@@ -37,9 +37,9 @@ class KafkaSettings(BaseSettings):
     
     # Consumer settings
     auto_offset_reset: str = Field(
-        default="latest",
+        default="earliest",
         env="KAFKA_AUTO_OFFSET_RESET",
-        description="Auto offset reset policy"
+        description="Auto offset reset policy - use earliest to catch up on missed data"
     )
     
     # Producer settings for reliability

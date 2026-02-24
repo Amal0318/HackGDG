@@ -24,10 +24,10 @@ export function usePatientRiskHistory(patientId?: string) {
 
       if (pid && data && (data.computed_risk !== undefined || data.risk_score !== undefined)) {
         const riskValue = data.computed_risk || data.risk_score || 0;
-        console.log(`📊 REAL Risk update for ${pid}: ${riskValue} (computed:${data.computed_risk}, score:${data.risk_score})`);
+        console.log(`📊 Risk update for ${pid}: ${(riskValue * 100).toFixed(2)}%`);
         
         const newPoint: RiskDataPoint = {
-          timestamp: data.timestamp || data.prediction_time || new Date().toISOString(),
+          timestamp: data.last_updated || data.timestamp || data.prediction_time || new Date().toISOString(),
           risk_score: riskValue
         };
 
@@ -44,13 +44,13 @@ export function usePatientRiskHistory(patientId?: string) {
         setIsLive(true);
       }
     } else if (message.type === 'initial_data' && message.patients) {
-      console.log('📊 REAL Initial patient data received:', message.patients.length, 'patients');
+      console.log('📊 Initial patient data received:', message.patients.length, 'patients');
       // Process initial data for all patients
       message.patients.forEach((patient: any) => {
         if (patient.computed_risk !== undefined || patient.risk_score !== undefined) {
           const riskValue = patient.computed_risk || patient.risk_score || 0;
           const newPoint: RiskDataPoint = {
-            timestamp: patient.timestamp || patient.prediction_time || new Date().toISOString(),
+            timestamp: patient.last_updated || patient.timestamp || patient.prediction_time || new Date().toISOString(),
             risk_score: riskValue
           };
           

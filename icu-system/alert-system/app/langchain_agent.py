@@ -108,85 +108,74 @@ Keep it concise and actionable for emergency response.
         Returns:
             Alert dictionary with generated content and metadata
         """
-        try:
-            # Check if alert is warranted
-            if not self._should_alert(patient_data):
-                return None
-            
-            # Prepare data for LLM
-            llm_input = self._prepare_llm_input(patient_data)
-            
-            # Generate alert using LangChain
-            logger.info(f"🧠 Generating alert for patient {patient_data.get('patient_id')}")
-            response = self.alert_chain.invoke(llm_input)
-            
-            # Extract generated text
-            alert_text = response.get("text", "").strip()
-            
-            # Build alert payload
-            alert = {
-                "patient_id": patient_data.get("patient_id"),
-                "floor_id": patient_data.get("floor_id"),
-                "severity": self._determine_severity(patient_data),
-                "alert_message": alert_text,
-                "raw_data": patient_data,
-                "generated_at": datetime.utcnow().isoformat(),
-                "llm_provider": settings.LLM_PROVIDER,
-                "alert_type": "high_risk_patient"
-            }
-            
-            logger.info(f"✅ Alert generated for {patient_data.get('patient_id')}")
-            return alert
+        # Check if alert is warranted
+        if not self._should_alert(patient_data):
+            return None
         
-        except Exception as e:
-            logger.error(f"❌ Failed to generate alert: {e}")
-            # Fallback to rule-based alert
-            return self._generate_fallback_alert(patient_data)
+        # TEMPORARY: Skip LLM and use fallback to avoid API key leak issues
+        logger.info(f"🧠 Generating rule-based alert for patient {patient_data.get('patient_id')}")
+        return self._generate_fallback_alert(patient_data)
     
     def _should_alert(self, data: Dict) -> bool:
         """Determine if alert should be triggered"""
-        risk_score = data.get("computed_risk", 0)
-        shock_index = data.get("shock_index", 0)
-        spo2 = data.get("spo2", 100)
-        is_high_risk = data.get("is_high_risk", False)
-        anomaly_flag = data.get("anomaly_flag", 0)
+        # Extract risk_score from actual Kafka message format
+        risk_score = data.get("risk_score", 0)
+        
+        # Extract vitals from nested object
+        vitals = data.get("vitals", {})
+        spo2 = vitals.get("spo2", 100)
+        heart_rate = vitals.get("heart_rate", 0)
+        systolic_bp = vitals.get("systolic_bp", 0)
+        
+        # Calculate shock index (HR / SBP)
+        shock_index = heart_rate / systolic_bp if systolic_bp > 0 else 0
         
         # Trigger conditions
-        if is_high_risk:
-            return True
         if risk_score > settings.HIGH_RISK_THRESHOLD:
+            logger.info(f"🚨 HIGH RISK DETECTED: {data.get('patient_id')} - Risk={risk_score:.3f}")
             return True
         if shock_index > settings.CRITICAL_SHOCK_INDEX:
+            logger.info(f"🚨 CRITICAL SHOCK INDEX: {data.get('patient_id')} - SI={shock_index:.2f}")
             return True
         if spo2 < settings.CRITICAL_SPO2:
-            return True
-        if anomaly_flag == 1:
+            logger.info(f"🚨 LOW SPO2: {data.get('patient_id')} - SpO2={spo2}")
             return True
         
         return False
     
     def _prepare_llm_input(self, data: Dict) -> Dict:
-        """Prepare data for LLM input"""
+        """Prepare data for LLM input - adapted for actual Kafka message format"""
+        vitals = data.get("vitals", {})
+        heart_rate = vitals.get("heart_rate", 0)
+        sbp = vitals.get("systolic_bp", 0)
+        spo2 = vitals.get("spo2", 0)
+        shock_index = heart_rate / sbp if sbp > 0 else 0
+        
         return {
             "patient_id": data.get("patient_id", "Unknown"),
-            "floor_id": data.get("floor_id", "Unknown"),
-            "state": data.get("state", "unknown"),
-            "heart_rate": round(data.get("rolling_hr", 0), 1),
-            "sbp": round(data.get("rolling_sbp", 0), 1),
-            "spo2": round(data.get("spo2", 0), 1),
-            "shock_index": round(data.get("shock_index", 0), 2),
-            "hr_trend": round(data.get("hr_trend", 0), 1),
-            "sbp_trend": round(data.get("sbp_trend", 0), 1),
-            "risk_score": round(data.get("computed_risk", 0), 2),
-            "anomaly_flag": "YES" if data.get("anomaly_flag", 0) == 1 else "NO",
+            "floor_id": "ICU Floor 1",  # Default since not in message
+            "state": "monitoring",
+            "heart_rate": round(heart_rate, 1),
+            "sbp": round(sbp, 1),
+            "spo2": round(spo2, 1),
+            "shock_index": round(shock_index, 2),
+            "hr_trend": "stable",  # Not available in message
+            "sbp_trend": "stable",  # Not available in message
+            "risk_score": round(data.get("risk_score", 0), 3),
+            "anomaly_flag": "NO",  # Not available in message
             "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
         }
     
     def _determine_severity(self, data: Dict) -> str:
         """Determine alert severity level"""
-        shock_index = data.get("shock_index", 0)
-        spo2 = data.get("spo2", 100)
-        risk_score = data.get("computed_risk", 0)
+        vitals = data.get("vitals", {})
+        heart_rate = vitals.get("heart_rate", 0)
+        sbp = vitals.get("systolic_bp", 0)
+        spo2 = vitals.get("spo2", 100)
+        risk_score = data.get("risk_score", 0)
+        
+        # Calculate shock index
+        shock_index = heart_rate / sbp if sbp > 0 else 0
         
         # CRITICAL conditions
         if shock_index > 1.5 or spo2 < 85 or risk_score > 0.9:
@@ -203,21 +192,27 @@ Keep it concise and actionable for emergency response.
         """Generate rule-based alert if LLM fails"""
         patient_id = data.get("patient_id", "Unknown")
         severity = self._determine_severity(data)
+        vitals = data.get("vitals", {})
+        
+        heart_rate = vitals.get("heart_rate", 0)
+        sbp = vitals.get("systolic_bp", 0)
+        spo2 = vitals.get("spo2", 0)
+        shock_index = heart_rate / sbp if sbp > 0 else 0
         
         fallback_message = f"""
-🚨 {severity} PRIORITY ALERT - {data.get('floor_id', 'Unknown Floor')}
+🚨 {severity} PRIORITY ALERT - ICU Floor 1
 
 Patient: {patient_id}
-State: {data.get('state', 'unknown').upper()}
+State: MONITORING
 
 Key Vitals:
-- Heart Rate: {data.get('rolling_hr', 0):.1f} bpm
-- Blood Pressure: {data.get('rolling_sbp', 0):.1f} mmHg
-- SpO2: {data.get('spo2', 0):.1f}%
-- Shock Index: {data.get('shock_index', 0):.2f}
+- Heart Rate: {heart_rate:.1f} bpm
+- Blood Pressure: {sbp:.1f} mmHg
+- SpO2: {spo2:.1f}%
+- Shock Index: {shock_index:.2f}
 
-Risk Score: {data.get('computed_risk', 0):.2f}
-Anomaly: {'YES' if data.get('anomaly_flag', 0) == 1 else 'NO'}
+Risk Score: {data.get('risk_score', 0):.3f}
+Model: {data.get('model_type', 'Unknown')}
 
 ⚠️ Immediate medical review recommended
 (Fallback alert - LLM unavailable)
@@ -225,7 +220,7 @@ Anomaly: {'YES' if data.get('anomaly_flag', 0) == 1 else 'NO'}
         
         return {
             "patient_id": patient_id,
-            "floor_id": data.get("floor_id"),
+            "floor_id": "ICU Floor 1",
             "severity": severity,
             "alert_message": fallback_message.strip(),
             "raw_data": data,

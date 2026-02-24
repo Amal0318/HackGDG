@@ -1,10 +1,11 @@
 import { Fragment } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
-import { X, AlertTriangle } from 'lucide-react';
+import { X, AlertTriangle, FileText } from 'lucide-react';
 import RiskBadge from './RiskBadge';
 import VitalSign from './VitalSign';
 import TrendsView from './TrendsView';
 import { Patient } from '../hooks/usePatients';
+import { PDFGenerator } from '../utils/pdfGenerator';
 
 interface PatientDetailDrawerProps {
   patient: Patient | null;
@@ -13,6 +14,10 @@ interface PatientDetailDrawerProps {
 
 const PatientDetailDrawer: React.FC<PatientDetailDrawerProps> = ({ patient, onClose }) => {
   if (!patient) return null;
+
+  const handleExportPDF = async () => {
+    await PDFGenerator.generatePatientPDF(patient);
+  };
 
   return (
     <Transition appear show={true} as={Fragment}>
@@ -55,12 +60,22 @@ const PatientDetailDrawer: React.FC<PatientDetailDrawerProps> = ({ patient, onCl
                             <p className="text-blue-100">Bed {patient.bed_number} • Floor {patient.floor}</p>
                           </div>
                         </div>
-                        <button
-                          onClick={onClose}
-                          className="rounded-md p-2 text-white hover:bg-white/20 transition-colors"
-                        >
-                          <X className="h-6 w-6" />
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={handleExportPDF}
+                            className="rounded-md p-2 text-white hover:bg-white/20 transition-colors flex items-center gap-2"
+                            title="Export to PDF"
+                          >
+                            <FileText className="h-5 w-5" />
+                            <span className="hidden md:inline text-sm">Export PDF</span>
+                          </button>
+                          <button
+                            onClick={onClose}
+                            className="rounded-md p-2 text-white hover:bg-white/20 transition-colors"
+                          >
+                            <X className="h-6 w-6" />
+                          </button>
+                        </div>
                       </div>
                     </div>
 

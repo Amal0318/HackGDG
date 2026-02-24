@@ -43,9 +43,9 @@ class PathwayEngine:
         self.enriched_stream: Optional[pw.Table] = None
         self.is_running = False
         
-        # Kafka configuration
+        # Kafka configuration - using vitals topic from vital simulator
         self.kafka_servers = 'kafka:9092'
-        self.input_topic = 'vitals_raw'
+        self.input_topic = 'vitals'
         self.output_topic = 'vitals_enriched'
         
     def initialize_components(self) -> bool:
@@ -69,25 +69,25 @@ class PathwayEngine:
             logger.info(f"Connecting to Kafka: {self.kafka_servers}")
             logger.info(f"Input topic: {self.input_topic}")
             
-            # Define schema for incoming vitals
+            # Define schema for incoming vitals (matches vitals topic from simulator)
             class VitalsSchema(pw.Schema):
                 patient_id: str
                 timestamp: str
                 heart_rate: float
                 systolic_bp: float
                 diastolic_bp: float
-                map: float
                 spo2: float
                 respiratory_rate: float
                 temperature: float
-                lactate: float
                 shock_index: float
+                state: str
+                event_type: str
             
             self.input_stream = pw.io.kafka.read(
                 rdkafka_settings={
                     'bootstrap.servers': self.kafka_servers,
                     'group.id': 'pathway-engine',
-                    'auto.offset.reset': 'latest'
+                    'auto.offset.reset': 'earliest'
                 },
                 topic=self.input_topic,
                 format='json',
@@ -95,6 +95,24 @@ class PathwayEngine:
             )
             
             logger.info("Kafka input stream configured")
+            
+            # Add missing fields: calculate MAP and set default lactate
+            logger.info("Adding derived fields (MAP, lactate)...")
+            self.input_stream = self.input_stream.select(
+                patient_id=pw.this.patient_id,
+                timestamp=pw.this.timestamp,
+                heart_rate=pw.this.heart_rate,
+                systolic_bp=pw.this.systolic_bp,
+                diastolic_bp=pw.this.diastolic_bp,
+                spo2=pw.this.spo2,
+                respiratory_rate=pw.this.respiratory_rate,
+                temperature=pw.this.temperature,
+                shock_index=pw.this.shock_index,
+                state=pw.this.state,
+                event_type=pw.this.event_type,
+                map=pw.this.diastolic_bp + (pw.this.systolic_bp - pw.this.diastolic_bp) / 3.0,
+                lactate=pw.cast(float, 1.0)  # Normal lactate default value
+            )
             
             # Create feature engineering pipeline
             logger.info("Building feature engineering pipeline...")

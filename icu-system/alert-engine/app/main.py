@@ -6,6 +6,7 @@ NO rule-based risk calculation - relies on ML Service only
 
 import json
 import logging
+import os
 import signal
 import sys
 from datetime import datetime

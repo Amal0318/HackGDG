@@ -75,7 +75,7 @@ class AlertSystem:
         conf = {
             'bootstrap.servers': settings.KAFKA_BOOTSTRAP_SERVERS,
             'group.id': settings.KAFKA_GROUP_ID,
-            'auto.offset.reset': 'earliest',  # Read from beginning to catch existing alerts
+            'auto.offset.reset': 'latest',  # Only read NEW messages (real-time alerts)
             'enable.auto.commit': True,
         }
         return Consumer(conf)
@@ -95,15 +95,21 @@ class AlertSystem:
         logger.info("Press Ctrl+C to stop\n")
         
         # Main monitoring loop
+        message_count = 0
         try:
             while self.running:
                 msg = self.consumer.poll(timeout=1.0)
                 
                 if msg is None:
+                    # Log every 10 seconds to show we're alive
+                    if message_count % 10 == 0:
+                        logger.info("⏳ Waiting for messages...")
+                    message_count += 1
                     continue
                 
                 if msg.error():
                     if msg.error().code() == KafkaError._PARTITION_EOF:
+                        logger.info("📭 Reached end of partition")
                         continue
                     else:
                         logger.error(f"Kafka error: {msg.error()}")
@@ -125,12 +131,31 @@ class AlertSystem:
             # Parse message
             data = json.loads(msg.value().decode('utf-8'))
             patient_id = data.get('patient_id')
+            risk_score = data.get('risk_score', 0)
+            timestamp_str = data.get('timestamp')
             
             if not patient_id:
                 return
             
+            # ⏰ FRESHNESS CHECK: Only process messages from last 60 seconds
+            if timestamp_str:
+                from datetime import datetime, timezone
+                try:
+                    msg_time = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+                    age_seconds = (datetime.now(timezone.utc) - msg_time).total_seconds()
+                    
+                    if age_seconds > 60:  # Skip messages older than 1 minute
+                        logger.debug(f"⏭️  Skipping old message: {patient_id} (age={age_seconds:.0f}s)")
+                        return
+                except:
+                    pass  # If timestamp parsing fails, process anyway
+            
+            # Log all messages for debugging
+            logger.info(f"📨 Received: {patient_id} - Risk={risk_score:.3f}")
+            
             # Check rate limiting (avoid alert spam)
             if not self._should_send_alert(patient_id):
+                logger.info(f"⏭️  Skipping {patient_id} - rate limited")
                 return
             
             # Generate alert using LangChain
@@ -143,7 +168,7 @@ class AlertSystem:
                 # Send notifications
                 self.notification_service.send_alert(alert)
                 
-                logger.info(f"🚨 Alert triggered for {patient_id} on {data.get('floor_id')}")
+                logger.info(f"🚨 Alert triggered for {patient_id}")
         
         except json.JSONDecodeError:
             logger.error(f"Failed to decode message: {msg.value()}")

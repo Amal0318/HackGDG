@@ -1,10 +1,11 @@
 import { Fragment } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
-import { X, Printer, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { X, Printer, FileText, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { format } from 'date-fns';
 import { Patient as MockPatient } from '../mockData';
 import RiskBadge from './RiskBadge';
 import clsx from 'clsx';
+import { PDFGenerator } from '../utils/pdfGenerator';
 
 interface ShiftHandoffModalProps {
   isOpen: boolean;
@@ -32,6 +33,16 @@ export default function ShiftHandoffModal({
 
   const handlePrint = () => {
     window.print();
+  };
+
+  const handleExportPDF = async () => {
+    await PDFGenerator.generateShiftHandoffPDF({
+      patients,
+      nurseName,
+      shift,
+      floor,
+      ward
+    });
   };
 
   const getTrendIcon = (trend: 'improving' | 'stable' | 'deteriorating') => {
@@ -239,6 +250,14 @@ export default function ShiftHandoffModal({
                     {patients.length} patients • {patients.filter(p => p.riskLevel === 'critical' || p.riskLevel === 'high').length} high risk
                   </p>
                   <div className="flex gap-2">
+                    <button
+                      onClick={handleExportPDF}
+                      className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors focus-visible-ring"
+                      title="Export as PDF"
+                    >
+                      <FileText className="w-4 h-4" />
+                      Export PDF
+                    </button>
                     <button
                       onClick={handlePrint}
                       className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-dark transition-colors focus-visible-ring"

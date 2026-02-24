@@ -92,7 +92,7 @@ class StreamMerger:
                 bootstrap_servers=self.kafka_servers,
                 group_id='backend-vitals',
                 value_deserializer=lambda m: json.loads(m.decode('utf-8')),
-                auto_offset_reset='latest'
+                auto_offset_reset='earliest'  # Catch up on missed data
             )
             
             logger.info("Vitals consumer connected")
@@ -130,7 +130,7 @@ class StreamMerger:
                 bootstrap_servers=self.kafka_servers,
                 group_id='backend-predictions',
                 value_deserializer=lambda m: json.loads(m.decode('utf-8')),
-                auto_offset_reset='latest'
+                auto_offset_reset='earliest'  # Catch up on missed data
             )
             
             logger.info("Predictions consumer connected")

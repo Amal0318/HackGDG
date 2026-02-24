@@ -131,31 +131,35 @@ services:
       - icu-network
     restart: unless-stopped
 
-  # Legacy alert system (email alerts with LLM)
-  # Uncomment if email alerting is needed
-  # alert-system:
-  #   build:
-  #     context: ./alert-system
-  #   container_name: icu-alert-system
-  #   depends_on:
-  #     kafka:
-  #       condition: service_healthy
-  #   environment:
-  #     KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-  #     LLM_PROVIDER: gemini
-  #     GEMINI_MODEL: gemini-2.5-flash
-  #     GEMINI_API_KEY: ${GEMINI_API_KEY}
-  #     ENABLE_EMAIL_ALERTS: ${ENABLE_EMAIL_ALERTS:-true}
-  #     SMTP_SERVER: ${SMTP_SERVER:-smtp.gmail.com}
-  #     SMTP_PORT: ${SMTP_PORT:-587}
-  #     SMTP_USERNAME: ${SMTP_USERNAME}
-  #     SMTP_PASSWORD: ${SMTP_PASSWORD}
-  #     ALERT_EMAIL_FROM: ${ALERT_EMAIL_FROM:-icu-alerts@hospital.com}
-  #     ALERT_EMAIL_TO: ${ALERT_EMAIL_TO}
-  #     BACKEND_API_URL: http://backend-api:8000
-  #   networks:
-  #     - icu-network
-  #   restart: unless-stopped
+  # LangChain Alert System - AI-powered emergency notifications
+  # Monitors high-risk patients and sends intelligent alerts
+  alert-system:
+    build:
+      context: ./alert-system
+    container_name: icu-alert-system
+    depends_on:
+      kafka:
+        condition: service_healthy
+      ml-service:
+        condition: service_started
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      LLM_PROVIDER: gemini
+      GEMINI_MODEL: gemini-2.5-flash
+      GEMINI_API_KEY: AIzaSyDguHo0ev9d4sYpWINhNxxbIJ5kiisYmV8
+      ENABLE_CONSOLE_ALERTS: "true"
+      ENABLE_EMAIL_ALERTS: ${ENABLE_EMAIL_ALERTS:-false}
+      SMTP_SERVER: ${SMTP_SERVER:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      ALERT_EMAIL_FROM: ${ALERT_EMAIL_FROM:-icu-alerts@hospital.com}
+      ALERT_EMAIL_TO: ${ALERT_EMAIL_TO}
+      BACKEND_API_URL: http://backend-api:8000
+      HIGH_RISK_THRESHOLD: 0.7
+    networks:
+      - icu-network
+    restart: unless-stopped
 
   # Standalone RAG service removed - RAG now inside pathway-engine
   # rag-service:

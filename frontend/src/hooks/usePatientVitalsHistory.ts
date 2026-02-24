@@ -28,35 +28,42 @@ export function usePatientVitalsHistory(patientId?: string) {
       const pid = message.patient_id;
       const data = message.data;
 
-      if (pid && data && (data.heart_rate !== undefined || data.rolling_hr !== undefined)) {
-        console.log(`💓 REAL Vitals update for ${pid}:`, {
-          hr: data.heart_rate || data.rolling_hr,
-          sbp: data.systolic_bp || data.rolling_sbp,
-          spo2: data.spo2 || data.rolling_spo2
-        });
+      if (pid && data) {
+        // Extract vitals from nested structure OR flat structure
+        const vitals = data.vitals || data;
         
-        const newPoint: VitalsDataPoint = {
-          timestamp: data.timestamp || data.prediction_time || new Date().toISOString(),
-          heart_rate: data.heart_rate || data.rolling_hr || 0,
-          systolic_bp: data.systolic_bp || data.rolling_sbp || 0,
-          diastolic_bp: data.diastolic_bp || 80, // fallback
-          spo2: data.spo2 || data.rolling_spo2 || 0,
-          respiratory_rate: data.respiratory_rate || 16, // fallback
-          temperature: data.temperature || 37.0, // fallback
-        };
-
-        setVitalsHistory(prev => {
-          const patientHistory = prev[pid] || [];
-          const updated = [...patientHistory, newPoint];
+        // Check if we have any vital signs data
+        if (vitals.heart_rate !== undefined || vitals.rolling_hr !== undefined) {
+          console.log(`💓 Vitals update for ${pid}:`, {
+            hr: vitals.heart_rate || vitals.rolling_hr,
+            sbp: vitals.systolic_bp || vitals.rolling_sbp,
+            spo2: vitals.spo2 || vitals.rolling_spo2,
+            timestamp: data.last_updated || data.timestamp
+          });
           
-          // Keep only last MAX_VITALS_HISTORY_POINTS
-          const trimmed = updated.slice(-MAX_VITALS_HISTORY_POINTS);
-          
-          return {
-            ...prev,
-            [pid]: trimmed,
+          const newPoint: VitalsDataPoint = {
+            timestamp: data.last_updated || data.timestamp || data.prediction_time || new Date().toISOString(),
+            heart_rate: vitals.heart_rate || vitals.rolling_hr || 0,
+            systolic_bp: vitals.systolic_bp || vitals.rolling_sbp || 0,
+            diastolic_bp: vitals.diastolic_bp || 80, // fallback
+            spo2: vitals.spo2 || vitals.rolling_spo2 || 0,
+            respiratory_rate: vitals.respiratory_rate || 16, // fallback
+            temperature: vitals.temperature || 37.0, // fallback
           };
-        });
+
+          setVitalsHistory(prev => {
+            const patientHistory = prev[pid] || [];
+            const updated = [...patientHistory, newPoint];
+            
+            // Keep only last MAX_VITALS_HISTORY_POINTS
+            const trimmed = updated.slice(-MAX_VITALS_HISTORY_POINTS);
+            
+            return {
+              ...prev,
+              [pid]: trimmed,
+            };
+          });
+        }
       }
     }
   }, []);

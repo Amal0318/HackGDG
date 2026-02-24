@@ -20,9 +20,9 @@ class RequestlyService:
     
     def __init__(self):
         self.enabled = True
-        self.mock_mode = False
+        self.mock_mode = False  # Disable mock mode - use real data only
         self.request_log = []
-        logger.info("🔧 Requestly Service initialized (Sponsor Integration)")
+        logger.info("🔧 Requestly Service initialized - Real-time mode (Sponsor Integration)")
     
     def log_api_request(self, endpoint: str, method: str, user: Optional[str] = None):
         """

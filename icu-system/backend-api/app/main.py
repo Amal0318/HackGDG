@@ -41,9 +41,9 @@ async def lifespan(app: FastAPI):
         await kafka_consumer_service.start()
         logger.info("✅ Kafka consumer started successfully")
     except Exception as e:
-        logger.warning(f"⚠️ Kafka consumer failed to start: {e}")
-        logger.info("🎭 Enabling Requestly Mock Mode as fallback")
-        requestly_service.enable_mock_mode()
+        logger.error(f"❌ Kafka consumer failed to start: {e}")
+        logger.error("Real-time mode requires working Kafka connection")
+        raise e
     
     logger.info("🚀 Backend API ready to serve requests")
     
@@ -115,18 +115,11 @@ async def get_floors():
     
     floors = settings.FLOORS.copy()
     
-    # Add patient counts to each floor
+    # Add patient counts to each floor using real data from Kafka
     for floor in floors:
-        if requestly_service.mock_mode:
-            # Use mock data
-            patients = requestly_service.get_mock_patients_for_floor(floor["id"], floor["capacity"])
-            floor["current_patients"] = len(patients)
-            floor["available_beds"] = floor["capacity"] - len(patients)
-        else:
-            # Use real data from Kafka
-            patients = await patient_data_store.get_patients_by_floor(floor["id"])
-            floor["current_patients"] = len(patients)
-            floor["available_beds"] = floor["capacity"] - len(patients)
+        patients = await patient_data_store.get_patients_by_floor(floor["id"])
+        floor["current_patients"] = len(patients)
+        floor["available_beds"] = floor["capacity"] - len(patients)
     
     response = {
         "floors": floors,
@@ -149,13 +142,8 @@ async def get_floor_patients(
     if floor_id not in valid_floors:
         raise HTTPException(status_code=404, detail=f"Floor {floor_id} not found")
     
-    if requestly_service.mock_mode:
-        # Return mock data via Requestly fallback
-        patients = requestly_service.get_mock_patients_for_floor(floor_id, 8)
-        logger.info(f"🎭 Serving mock data for floor {floor_id} (Requestly fallback)")
-    else:
-        # Return real data from Kafka
-        patients = await patient_data_store.get_patients_by_floor(floor_id)
+    # Return real data from Kafka
+    patients = await patient_data_store.get_patients_by_floor(floor_id)
     
     # Convert to list format and add acknowledgment status
     patient_list = list(patients.values())
@@ -193,15 +181,10 @@ async def get_patient_detail(
     """Get detailed information for a specific patient"""
     requestly_service.log_api_request(f"/api/patients/{patient_id}", "GET", "anonymous")
     
-    if requestly_service.mock_mode:
-        # Extract floor from patient_id (P1-xxx, P2-xxx, P3-xxx)
-        floor_id = f"{patient_id[1]}F" if patient_id.startswith('P') else "1F"
-        patient_data = requestly_service.get_mock_patient_data(patient_id, floor_id)
-    else:
-        patient_data = await patient_data_store.get_patient(patient_id)
+    patient_data = await patient_data_store.get_patient(patient_id)
         
-        if not patient_data:
-            raise HTTPException(status_code=404, detail=f"Patient {patient_id} not found")
+    if not patient_data:
+        raise HTTPException(status_code=404, detail=f"Patient {patient_id} not found")
     
     # Add acknowledgment status
     ack_data = alert_ack_store.get_acknowledgment(patient_id)

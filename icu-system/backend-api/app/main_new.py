@@ -466,30 +466,40 @@ async def generate_patient_report(
             try:
                 # Query RAG for patient context
                 async with httpx.AsyncClient() as client:
+                    payload = {
+                        "patient_id": patient_id,
+                        "query_text": f"Provide a comprehensive clinical summary for patient {patient_id} including current status, trends, and any concerns.",
+                        "top_k": 10
+                    }
+                    logger.info(f"Querying RAG for {patient_id}: {payload}")
+                    
                     rag_response = await client.post(
                         f"{PATHWAY_API_URL}/query",
-                        json={
-                            "patient_id": patient_id,
-                            "query": f"Provide a comprehensive clinical summary for patient {patient_id} including current status, trends, and any concerns.",
-                            "top_k": 10
-                        },
-                        timeout=5.0
+                        json=payload,
+                        timeout=10.0
                     )
+                    
+                    logger.info(f"RAG response status: {rag_response.status_code}")
                     
                     if rag_response.status_code == 200:
                         rag_data = rag_response.json()
-                        retrieved_context = rag_data.get('results', [])
+                        retrieved_context = rag_data.get('retrieved_context', [])
+                        logger.info(f"Retrieved {len(retrieved_context)} context items for {patient_id}")
                         
                         # Generate AI summary using LangChain
                         chat_agent = get_chat_agent()
                         ai_summary = chat_agent.generate_response(
                             patient_id=patient_id,
-                            question="Provide a comprehensive clinical summary including current status, vital trends, and recommendations.",
+                            question="Provide a comprehensive clinical summary including current status, vital signs trends, risk assessment, and clinical recommendations.",
                             retrieved_context=retrieved_context
                         )
+                        logger.info(f"Generated AI summary for {patient_id}: {len(ai_summary)} characters")
+                    else:
+                        logger.error(f"RAG query failed with status {rag_response.status_code}: {rag_response.text}")
+                        ai_summary = f"AI summary unavailable (RAG returned {rag_response.status_code})"
             except Exception as e:
-                logger.warning(f"Could not generate AI summary: {e}")
-                ai_summary = "AI summary unavailable due to system limitations."
+                logger.error(f"Could not generate AI summary: {e}", exc_info=True)
+                ai_summary = "AI summary unavailable. The RAG system is still indexing patient data."
         
         # Generate PDF report
         report_generator = ICUReportGenerator()

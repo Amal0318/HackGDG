@@ -27,9 +27,9 @@ class Settings:
     KAFKA_GROUP_ID = "alert-system-consumer-v2"  # New group ID to read from earliest
     
     # Alert Thresholds
-    HIGH_RISK_THRESHOLD = 0.7  # Trigger alert if computed_risk > 0.7
-    CRITICAL_SHOCK_INDEX = 1.0  # Critical if shock_index > 1.0
-    CRITICAL_SPO2 = 90  # Critical if SpO2 < 90%
+    HIGH_RISK_THRESHOLD = 0.85  # Trigger alert if computed_risk > 0.85 (increased from 0.7)
+    CRITICAL_SHOCK_INDEX = 1.2  # Critical if shock_index > 1.2 (increased from 1.0)
+    CRITICAL_SPO2 = 88  # Critical if SpO2 < 88% (decreased from 90%)
     
     # Notification Channels
     ENABLE_CONSOLE_ALERTS = True
@@ -49,7 +49,7 @@ class Settings:
     BACKEND_API_URL = os.getenv("BACKEND_API_URL", "http://localhost:8000")
     
     # Alert Rate Limiting (avoid spam)
-    MIN_ALERT_INTERVAL_SECONDS = 300  # 5 minutes between alerts for same patient
+    MIN_ALERT_INTERVAL_SECONDS = 900  # 15 minutes between alerts for same patient (increased from 5 min)
     
     # LLM Settings
     LLM_TEMPERATURE = 0.3  # Lower = more consistent

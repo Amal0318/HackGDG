@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { Search, Activity } from 'lucide-react';
 import { motion } from 'framer-motion';
 import clsx from 'clsx';
@@ -54,6 +54,58 @@ export default function DoctorDashboard() {
       : sortedPatients;
   }, [sortedPatients, searchQuery]);
 
+  // Stable display order – only re-orders when user explicitly changes sort/search
+  const [displayOrder, setDisplayOrder] = useState<string[]>([]);
+  const isFirstLoad = useRef(true);
+
+  useEffect(() => {
+    if (filteredPatients.length > 0 && isFirstLoad.current) {
+      isFirstLoad.current = false;
+      setDisplayOrder(filteredPatients.map(p => p.patient_id));
+    }
+  }, [filteredPatients]);
+
+  const handleSortChange = (newSort: SortType) => {
+    setSortBy(newSort);
+    const reordered = [...filteredPatients]
+      .sort((a, b) => {
+        if (newSort === 'risk') return b.riskScore - a.riskScore;
+        if (newSort === 'floor') return a.floor - b.floor;
+        if (newSort === 'name') return a.name.localeCompare(b.name);
+        return 0;
+      })
+      .map(p => p.patient_id);
+    setDisplayOrder(reordered);
+  };
+
+  useEffect(() => {
+    if (filteredPatients.length > 0) {
+      setDisplayOrder(prev => {
+        // Add any new patients to the end
+        const existing = new Set(prev);
+        const newIds = filteredPatients
+          .filter(p => !existing.has(p.patient_id))
+          .map(p => p.patient_id);
+        // Remove patients that are no longer in the filtered list
+        const currentIds = new Set(filteredPatients.map(p => p.patient_id));
+        const filtered = prev.filter(id => currentIds.has(id));
+        return newIds.length > 0 ? [...filtered, ...newIds] : filtered;
+      });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery, selectedFloor]);
+
+  // Apply stable order – vitals update in-place, no shuffling on live updates
+  const stablePatients = useMemo(() => {
+    if (displayOrder.length === 0) return filteredPatients;
+    const orderMap = new Map(displayOrder.map((id, i) => [id, i]));
+    return [...filteredPatients].sort((a, b) => {
+      const aIdx = orderMap.get(a.patient_id) ?? 999;
+      const bIdx = orderMap.get(b.patient_id) ?? 999;
+      return aIdx - bIdx;
+    });
+  }, [filteredPatients, displayOrder]);
+
   // Calculate floor stats
   const floorStats = useMemo(() => {
     return [1, 2, 3].map(floor => {
@@ -70,8 +122,8 @@ export default function DoctorDashboard() {
     });
   }, [patients]);
 
-  // Mock "my patients" - in real app would come from backend
-  const myPatients = patients.slice(0, 5);
+  // All patients assigned to this doctor
+  const myPatients = patients;
   
   if (error) {
     return (
@@ -108,7 +160,7 @@ export default function DoctorDashboard() {
           <div className="mb-4">
             <select
               value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as SortType)}
+              onChange={(e) => handleSortChange(e.target.value as SortType)}
               className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus-visible-ring bg-white"
             >
               <option value="risk">Sort by Risk</option>
@@ -117,7 +169,8 @@ export default function DoctorDashboard() {
             </select>
           </div>
 
-          <div className="space-y-2 max-h-[calc(100vh-300px)] overflow-y-auto">
+          <p className="text-xs text-gray-400 mb-2">{myPatients.length} patients total</p>
+          <div className="space-y-2 max-h-[calc(100vh-230px)] overflow-y-auto pr-1">
             {myPatients
               .sort((a, b) => {
                 if (sortBy === 'risk') return b.riskScore - a.riskScore;
@@ -224,12 +277,9 @@ export default function DoctorDashboard() {
         )}
 
         {/* Patient Grid */}
-        <motion.div
-          layout
-          className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"
-        >
-          {filteredPatients.length > 0 ? (
-            filteredPatients.map((patient) => (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {stablePatients.length > 0 ? (
+            stablePatients.map((patient) => (
               <PatientCard
                 key={patient.patient_id}
                 patient={patient}
@@ -242,7 +292,7 @@ export default function DoctorDashboard() {
               <p className="text-sm text-gray-400 mt-1">Try adjusting your search or filters</p>
             </div>
           )}
-        </motion.div>
+        </div>
       </div>
 
       {/* Patient Detail Drawer */}

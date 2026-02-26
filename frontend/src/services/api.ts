@@ -89,6 +89,47 @@ export const patientsAPI = {
     // Extract the history array from the response
     return response.history || [];
   },
+
+  async getRiskHistory(patientId: string, hours: number = 1): Promise<any> {
+    const response = await apiFetch<any>(`/api/patients/${patientId}/risk-history?hours=${hours}`);
+    // Extract risk history from response
+    return response.history || response.risk_history || [];
+  },
+
+  async generateReport(
+    patientId: string, 
+    options: { timeRangeHours?: number; includeAiSummary?: boolean } = {}
+  ): Promise<Blob> {
+    const { timeRangeHours = 3, includeAiSummary = true } = options;
+    
+    const response = await fetch(`${API_BASE_URL}/api/patients/${patientId}/reports/generate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        time_range_hours: timeRangeHours,
+        include_ai_summary: includeAiSummary,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Report generation failed:', response.status, errorText);
+      throw new Error(`Failed to generate report: ${response.statusText}`);
+    }
+
+    // Ensure we're getting a PDF
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/pdf')) {
+      console.error('Unexpected content type:', contentType);
+      const text = await response.text();
+      console.error('Response body:', text);
+      throw new Error('Server did not return a PDF');
+    }
+
+    return await response.blob();
+  },
 };
 
 // Stats API
@@ -254,34 +295,45 @@ export const alertAPI = {
 };
 
 // RAG API - AI-powered patient handoff assistant
-const RAG_BASE_URL = 'http://localhost:8002';
+// Uses integrated RAG inside pathway-engine (via backend API)
+const BACKEND_API_URL = 'http://localhost:8000';
 
 export const ragAPI = {
-  async query(question: string, patientId?: string, timeWindowHours: number = 4): Promise<any> {
-    const response = await fetch(`${RAG_BASE_URL}/api/handoff/query`, {
+  async query(question: string, patientId?: string): Promise<any> {
+    // Use default patient ID if none provided (for general queries)
+    const actualPatientId = patientId || 'P1';
+    
+    const response = await fetch(`${BACKEND_API_URL}/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        question,
-        patient_id: patientId,
-        time_window_hours: timeWindowHours
+        patient_id: actualPatientId,
+        question: question
       })
     });
     
     if (!response.ok) {
-      throw new Error(`RAG query failed: ${response.statusText}`);
+      const errorText = await response.text();
+      throw new Error(`Backend connection failed (${response.status}): ${errorText}`);
     }
     
-    return response.json();
+    const data = await response.json();
+    // Transform backend response to match expected format
+    return {
+      answer: data.answer,
+      sources: data.sources || [],
+      patient_id: data.patient_id
+    };
   },
 
   async getSummary(patientId: string, hours: number = 4): Promise<any> {
-    const response = await fetch(`${RAG_BASE_URL}/api/handoff/summary`, {
+    // Generate summary using chat endpoint
+    const response = await fetch(`${BACKEND_API_URL}/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         patient_id: patientId,
-        hours
+        question: `Provide a comprehensive clinical summary for the last ${hours} hours including current status, vital trends, and any concerns.`
       })
     });
     
@@ -289,17 +341,28 @@ export const ragAPI = {
       throw new Error(`RAG summary failed: ${response.statusText}`);
     }
     
-    return response.json();
+    const data = await response.json();
+    return {
+      summary: data.answer,
+      patient_id: patientId,
+      sources: data.sources || []
+    };
   },
 
   async checkHealth(): Promise<any> {
-    const response = await fetch(`${RAG_BASE_URL}/health`);
+    // Check backend API health (which includes pathway-engine RAG)
+    const response = await fetch(`${BACKEND_API_URL}/health`);
     
     if (!response.ok) {
       throw new Error('RAG service unavailable');
     }
     
-    return response.json();
+    const data = await response.json();
+    return {
+      status: data.status || 'healthy',
+      rag_enabled: true,
+      backend: 'pathway-engine-integrated'
+    };
   }
 };
 

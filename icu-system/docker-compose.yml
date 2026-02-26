@@ -126,7 +126,7 @@ services:
         condition: service_started
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      ALERT_THRESHOLD: ${ALERT_THRESHOLD:-0.75}
+      ALERT_THRESHOLD: ${ALERT_THRESHOLD:-0.85}
     networks:
       - icu-network
     restart: unless-stopped
@@ -156,12 +156,13 @@ services:
       ALERT_EMAIL_FROM: ${ALERT_EMAIL_FROM:-icu-alerts@hospital.com}
       ALERT_EMAIL_TO: ${ALERT_EMAIL_TO}
       BACKEND_API_URL: http://backend-api:8000
-      HIGH_RISK_THRESHOLD: 0.7
+      HIGH_RISK_THRESHOLD: 0.85
     networks:
       - icu-network
     restart: unless-stopped
 
-  # Standalone RAG service removed - RAG now inside pathway-engine
+  # Standalone RAG service removed - Using integrated RAG inside pathway-engine
+  # Frontend now uses backend API /chat endpoint which queries pathway-engine:8080
   # rag-service:
   #   build:
   #     context: ./rag-service

@@ -1,11 +1,12 @@
-import { Fragment } from 'react';
+import { Fragment, useState } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
-import { X, AlertTriangle, FileText } from 'lucide-react';
+import { X, AlertTriangle, FileText, FileBarChart } from 'lucide-react';
 import RiskBadge from './RiskBadge';
 import VitalSign from './VitalSign';
 import TrendsView from './TrendsView';
 import { Patient } from '../hooks/usePatients';
 import { PDFGenerator } from '../utils/pdfGenerator';
+import { patientsAPI } from '../services/api';
 
 interface PatientDetailDrawerProps {
   patient: Patient | null;
@@ -13,10 +14,53 @@ interface PatientDetailDrawerProps {
 }
 
 const PatientDetailDrawer: React.FC<PatientDetailDrawerProps> = ({ patient, onClose }) => {
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+
   if (!patient) return null;
 
   const handleExportPDF = async () => {
     await PDFGenerator.generatePatientPDF(patient);
+  };
+
+  const handleGenerateReport = async () => {
+    try {
+      setIsGeneratingReport(true);
+      
+      console.log('Generating report for patient:', patient.patient_id);
+      
+      const blob = await patientsAPI.generateReport(patient.patient_id, {
+        timeRangeHours: 3,
+        includeAiSummary: true,
+      });
+
+      console.log('Report generated, size:', blob.size, 'type:', blob.type);
+
+      if (blob.size === 0) {
+        throw new Error('Received empty PDF from server');
+      }
+
+      // Create download link
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `patient_${patient.patient_id}_report_${new Date().toISOString().split('T')[0]}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      // Clean up after a delay to ensure download starts
+      setTimeout(() => {
+        window.URL.revokeObjectURL(url);
+      }, 100);
+      
+      console.log('Report download initiated');
+    } catch (error) {
+      console.error('Failed to generate report:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      alert(`Failed to generate report: ${errorMessage}\n\nPlease check the browser console for details.`);
+    } finally {
+      setIsGeneratingReport(false);
+    }
   };
 
   return (
@@ -62,12 +106,23 @@ const PatientDetailDrawer: React.FC<PatientDetailDrawerProps> = ({ patient, onCl
                         </div>
                         <div className="flex items-center gap-2">
                           <button
+                            onClick={handleGenerateReport}
+                            disabled={isGeneratingReport}
+                            className="rounded-md p-2 text-white hover:bg-white/20 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Generate Clinical Report with Charts & AI Summary"
+                          >
+                            <FileBarChart className="h-5 w-5" />
+                            <span className="hidden md:inline text-sm">
+                              {isGeneratingReport ? 'Generating...' : 'Clinical Report'}
+                            </span>
+                          </button>
+                          <button
                             onClick={handleExportPDF}
                             className="rounded-md p-2 text-white hover:bg-white/20 transition-colors flex items-center gap-2"
-                            title="Export to PDF"
+                            title="Quick Print Export"
                           >
                             <FileText className="h-5 w-5" />
-                            <span className="hidden md:inline text-sm">Export PDF</span>
+                            <span className="hidden md:inline text-sm">Quick Print</span>
                           </button>
                           <button
                             onClick={onClose}

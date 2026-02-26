@@ -5,6 +5,7 @@ Generates professional medical reports with time-series graphs
 
 import io
 import logging
+import html
 from datetime import datetime
 from typing import List, Dict, Optional
 import matplotlib
@@ -296,20 +297,38 @@ class ICUReportGenerator:
         temp_vals = []
         lactate_vals = []
         
+        logger.info(f"Processing {len(vitals_history)} vitals history entries")
+        
         for entry in vitals_history[-100:]:  # Last 100 points
             try:
                 ts = datetime.fromisoformat(entry['timestamp'].replace('Z', '+00:00'))
                 timestamps.append(ts)
-                hr_vals.append(entry.get('heart_rate', 0))
-                bp_sys.append(entry.get('systolic_bp', 0))
-                bp_dia.append(entry.get('diastolic_bp', 0))
-                spo2_vals.append(entry.get('spo2', 0))
-                rr_vals.append(entry.get('respiratory_rate', 0))
-                temp_vals.append(entry.get('temperature', 0))
-                lactate_vals.append(entry.get('lactate', 0))
+                
+                # Vitals can be nested or flat - check both
+                vitals = entry.get('vitals', entry)
+                
+                hr = vitals.get('heart_rate', 0)
+                sbp = vitals.get('systolic_bp', 0)
+                dbp = vitals.get('diastolic_bp', 0)
+                spo2 = vitals.get('spo2', 0)
+                rr = vitals.get('respiratory_rate', 0)
+                temp = vitals.get('temperature', 0)
+                lac = vitals.get('lactate', 0)
+                
+                hr_vals.append(hr)
+                bp_sys.append(sbp)
+                bp_dia.append(dbp)
+                spo2_vals.append(spo2)
+                rr_vals.append(rr)
+                temp_vals.append(temp)
+                lactate_vals.append(lac)
+                
             except Exception as e:
                 logger.warning(f"Error parsing vitals history entry: {e}")
+                logger.warning(f"Problematic entry: {entry}")
                 continue
+        
+        logger.info(f"Extracted {len(timestamps)} data points")
         
         if not timestamps or len(timestamps) < 2:
             warning_text = """
@@ -322,47 +341,78 @@ class ICUReportGenerator:
             return elements
         
         # Heart Rate
-        axes[0, 0].plot(timestamps, hr_vals, 'b-', linewidth=2)
+        axes[0, 0].plot(timestamps, hr_vals, 'b-', linewidth=2, marker='o', markersize=3)
         axes[0, 0].set_title('Heart Rate (bpm)', fontweight='bold')
         axes[0, 0].set_ylabel('bpm')
         axes[0, 0].grid(True, alpha=0.3)
-        axes[0, 0].axhline(y=100, color='r', linestyle='--', alpha=0.5, label='Upper Limit')
-        axes[0, 0].axhline(y=60, color='r', linestyle='--', alpha=0.5, label='Lower Limit')
+        # Auto-scale with padding to show variations
+        if hr_vals:
+            hr_min, hr_max = min(hr_vals), max(hr_vals)
+            hr_range = hr_max - hr_min if hr_max > hr_min else 5
+            axes[0, 0].set_ylim(hr_min - hr_range * 0.3, hr_max + hr_range * 0.3)
+        axes[0, 0].axhline(y=100, color='r', linestyle='--', alpha=0.3, linewidth=1)
+        axes[0, 0].axhline(y=60, color='r', linestyle='--', alpha=0.3, linewidth=1)
         
         # Blood Pressure
-        axes[0, 1].plot(timestamps, bp_sys, 'r-', linewidth=2, label='Systolic')
-        axes[0, 1].plot(timestamps, bp_dia, 'b-', linewidth=2, label='Diastolic')
+        axes[0, 1].plot(timestamps, bp_sys, 'r-', linewidth=2, marker='o', markersize=3, label='Systolic')
+        axes[0, 1].plot(timestamps, bp_dia, 'b-', linewidth=2, marker='s', markersize=3, label='Diastolic')
         axes[0, 1].set_title('Blood Pressure (mmHg)', fontweight='bold')
         axes[0, 1].set_ylabel('mmHg')
         axes[0, 1].legend(loc='upper right', fontsize=8)
         axes[0, 1].grid(True, alpha=0.3)
+        # Auto-scale with padding
+        if bp_sys and bp_dia:
+            bp_min = min(min(bp_sys), min(bp_dia))
+            bp_max = max(max(bp_sys), max(bp_dia))
+            bp_range = bp_max - bp_min if bp_max > bp_min else 10
+            axes[0, 1].set_ylim(bp_min - bp_range * 0.2, bp_max + bp_range * 0.2)
         
         # SpO2
-        axes[1, 0].plot(timestamps, spo2_vals, 'g-', linewidth=2)
+        axes[1, 0].plot(timestamps, spo2_vals, 'g-', linewidth=2, marker='o', markersize=3)
         axes[1, 0].set_title('SpO2 (%)', fontweight='bold')
         axes[1, 0].set_ylabel('%')
         axes[1, 0].grid(True, alpha=0.3)
-        axes[1, 0].axhline(y=95, color='r', linestyle='--', alpha=0.5, label='Critical Threshold')
+        # Auto-scale with padding
+        if spo2_vals:
+            spo2_min, spo2_max = min(spo2_vals), max(spo2_vals)
+            spo2_range = spo2_max - spo2_min if spo2_max > spo2_min else 2
+            axes[1, 0].set_ylim(spo2_min - spo2_range * 0.3, spo2_max + spo2_range * 0.3)
+        axes[1, 0].axhline(y=95, color='r', linestyle='--', alpha=0.3, linewidth=1)
         
         # Respiratory Rate
-        axes[1, 1].plot(timestamps, rr_vals, 'purple', linewidth=2)
+        axes[1, 1].plot(timestamps, rr_vals, 'purple', linewidth=2, marker='o', markersize=3)
         axes[1, 1].set_title('Respiratory Rate (br/min)', fontweight='bold')
         axes[1, 1].set_ylabel('br/min')
         axes[1, 1].grid(True, alpha=0.3)
+        # Auto-scale with padding
+        if rr_vals:
+            rr_min, rr_max = min(rr_vals), max(rr_vals)
+            rr_range = rr_max - rr_min if rr_max > rr_min else 2
+            axes[1, 1].set_ylim(rr_min - rr_range * 0.3, rr_max + rr_range * 0.3)
         
         # Temperature
-        axes[2, 0].plot(timestamps, temp_vals, 'orange', linewidth=2)
+        axes[2, 0].plot(timestamps, temp_vals, 'orange', linewidth=2, marker='o', markersize=3)
         axes[2, 0].set_title('Temperature (°C)', fontweight='bold')
         axes[2, 0].set_ylabel('°C')
         axes[2, 0].grid(True, alpha=0.3)
-        axes[2, 0].axhline(y=37.5, color='r', linestyle='--', alpha=0.5)
+        # Auto-scale with padding
+        if temp_vals:
+            temp_min, temp_max = min(temp_vals), max(temp_vals)
+            temp_range = temp_max - temp_min if temp_max > temp_min else 0.5
+            axes[2, 0].set_ylim(temp_min - temp_range * 0.3, temp_max + temp_range * 0.3)
+        axes[2, 0].axhline(y=37.5, color='r', linestyle='--', alpha=0.3, linewidth=1)
         
         # Lactate
-        axes[2, 1].plot(timestamps, lactate_vals, 'brown', linewidth=2)
+        axes[2, 1].plot(timestamps, lactate_vals, 'brown', linewidth=2, marker='o', markersize=3)
         axes[2, 1].set_title('Lactate (mmol/L)', fontweight='bold')
         axes[2, 1].set_ylabel('mmol/L')
         axes[2, 1].grid(True, alpha=0.3)
-        axes[2, 1].axhline(y=2.0, color='r', linestyle='--', alpha=0.5, label='Critical Level')
+        # Auto-scale with padding
+        if lactate_vals:
+            lac_min, lac_max = min(lactate_vals), max(lactate_vals)
+            lac_range = lac_max - lac_min if lac_max > lac_min else 0.5
+            axes[2, 1].set_ylim(lac_min - lac_range * 0.3, lac_max + lac_range * 0.3)
+        axes[2, 1].axhline(y=2.0, color='r', linestyle='--', alpha=0.3, linewidth=1)
         
         # Format x-axis for all subplots
         for ax in axes.flat:
@@ -426,16 +476,42 @@ class ICUReportGenerator:
         
         # Create chart
         fig, ax = plt.subplots(figsize=(10, 3))
-        ax.plot(timestamps, risk_scores, 'r-', linewidth=2.5, label='Risk Score')
-        ax.fill_between(timestamps, risk_scores, alpha=0.3, color='red')
         
-        # Risk zones
-        ax.axhline(y=30, color='orange', linestyle='--', alpha=0.7, label='Low Risk Threshold')
-        ax.axhline(y=70, color='red', linestyle='--', alpha=0.7, label='High Risk Threshold')
+        # Convert risk scores to percentage if needed (0-1 range -> 0-100)
+        max_risk = max(risk_scores) if risk_scores else 0
+        if max_risk <= 1.0:
+            # Risk scores are in 0-1 range, convert to percentage
+            risk_scores_display = [r * 100 for r in risk_scores]
+            ylabel = 'Risk Score (%)'
+            low_threshold = 30
+            high_threshold = 70
+        else:
+            # Already in percentage
+            risk_scores_display = risk_scores
+            ylabel = 'Risk Score'
+            low_threshold = 30
+            high_threshold = 70
+        
+        ax.plot(timestamps, risk_scores_display, 'r-', linewidth=2.5, marker='o', markersize=3, label='Risk Score')
+        ax.fill_between(timestamps, risk_scores_display, alpha=0.3, color='red')
+        
+        # Auto-scale y-axis with padding
+        if risk_scores_display:
+            risk_min = min(risk_scores_display)
+            risk_max = max(risk_scores_display)
+            risk_range = risk_max - risk_min if risk_max > risk_min else 1
+            ax.set_ylim(max(0, risk_min - risk_range * 0.3), min(100, risk_max + risk_range * 0.3))
+        
+        # Risk zones (only show if in visible range)
+        y_lim = ax.get_ylim()
+        if low_threshold >= y_lim[0] and low_threshold <= y_lim[1]:
+            ax.axhline(y=low_threshold, color='orange', linestyle='--', alpha=0.5, linewidth=1, label='Low Risk Threshold')
+        if high_threshold >= y_lim[0] and high_threshold <= y_lim[1]:
+            ax.axhline(y=high_threshold, color='red', linestyle='--', alpha=0.5, linewidth=1, label='High Risk Threshold')
         
         ax.set_title('Last 3 Hours - Patient Deterioration Risk Trend', fontsize=12, fontweight='bold')
         ax.set_xlabel('Time', fontsize=10)
-        ax.set_ylabel('Risk Score (%)', fontsize=10)
+        ax.set_ylabel(ylabel, fontsize=10)
         ax.legend(loc='upper left')
         ax.grid(True, alpha=0.3)
         ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
@@ -513,17 +589,29 @@ class ICUReportGenerator:
         elements = []
         elements.append(Paragraph("AI Clinical Summary", self.styles['SectionHeader']))
         
-        summary_text = f"""
-        <para>
-        <i>Generated by AI-powered medical analysis system using RAG (Retrieval-Augmented Generation) 
-        with real-time patient data context.</i>
-        </para>
-        <para>
-        {ai_summary}
-        </para>
-        """
+        # Clean the AI summary text - remove ALL problematic characters
+        # Replace unicode arrows with ASCII equivalents
+        cleaned_summary = ai_summary.replace('→', '->').replace('↑', 'up').replace('↓', 'down')
+        # Remove other special unicode characters
+        cleaned_summary = cleaned_summary.replace('↔', '<->').replace('±', '+/-')
+        # Replace quotes that might cause XML parsing issues
+        cleaned_summary = cleaned_summary.replace('"', "'").replace('"', "'").replace('"', "'")
+        # Remove any remaining potentially problematic characters
+        cleaned_summary = ''.join(char if ord(char) < 128 else ' ' for char in cleaned_summary)
         
-        elements.append(Paragraph(summary_text, self.styles['ClinicalText']))
+        # Create separate paragraphs to avoid XML parsing issues
+        disclaimer_para = Paragraph(
+            "<i>Generated by AI-powered medical analysis system using RAG with real-time patient data.</i>",
+            self.styles['ClinicalText']
+        )
+        
+        # Use plain text paragraph for the actual summary
+        summary_para = Paragraph(cleaned_summary, self.styles['ClinicalText'])
+        
+        elements.append(disclaimer_para)
+        elements.append(Spacer(1, 0.1*inch))
+        elements.append(summary_para)
+        
         return elements
     
     def _create_footer(self) -> List:

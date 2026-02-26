@@ -1,0 +1,86 @@
+# ===================================================================
+# VitalX ICU Digital Twin System - Unified Requirements
+# Real-time ICU Patient Monitoring with AI-Powered Risk Prediction
+# ===================================================================
+
+# ===================================================================
+# Core Web Framework & API
+# ===================================================================
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+websockets==12.0
+pydantic==2.5.0
+python-dotenv==1.0.0
+aiofiles==23.1.0
+
+# ===================================================================
+# Streaming & Message Queue
+# ===================================================================
+kafka-python==2.0.2
+confluent-kafka>=2.3.0
+
+# ===================================================================
+# Machine Learning & Deep Learning
+# ===================================================================
+# PyTorch for LSTM Model
+torch==2.2.0
+torchvision==0.17.0
+torchaudio==2.2.0
+
+# Scientific Computing
+numpy==1.26.4
+pandas==2.2.0
+scikit-learn==1.4.0
+
+# ===================================================================
+# Pathway Real-time Streaming Engine
+# ===================================================================
+pathway>=0.8.0
+sentence-transformers>=2.2.2
+
+# ===================================================================
+# LangChain AI Agents & LLM Integration
+# ===================================================================
+langchain==0.1.0
+langchain-openai==0.0.5
+langchain-google-genai==1.0.0
+openai==1.6.1
+google-generativeai==0.3.2
+
+# ===================================================================
+# PDF Report Generation
+# ===================================================================
+reportlab>=4.0.0
+matplotlib>=3.8.0
+pillow>=10.0.0
+seaborn>=0.11.0
+
+# ===================================================================
+# HTTP Client & API Communication
+# ===================================================================
+httpx>=0.24.0
+requests>=2.31.0
+
+# ===================================================================
+# Visualization & Monitoring
+# ===================================================================
+tqdm>=4.62.0
+
+# ===================================================================
+# Development & Utilities
+# ===================================================================
+flask==3.0.0
+flask-cors==4.0.0
+
+# ===================================================================
+# Notes:
+# - All services are containerized using Docker
+# - This file consolidates all Python dependencies across:
+#   * Backend API (FastAPI + WebSocket)
+#   * Pathway Streaming Engine (Real-time RAG)
+#   * ML Service (LSTM Risk Prediction)
+#   * Alert System (LangChain Agents)
+#   * Vital Simulator (Physiological Data Generator)
+# - Frontend (React/TypeScript) dependencies in frontend/package.json
+# - Kafka & Zookeeper run as official Docker images
+# ===================================================================

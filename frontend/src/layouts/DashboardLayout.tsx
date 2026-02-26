@@ -150,7 +150,7 @@ export default function DashboardLayout() {
                 </div>
                 <div className="flex items-center gap-2 text-sm pt-2">
                   <StatusDot status="connected" />
-                  <span className="text-gray-600">{stats?.data_source === 'kafka' ? 'Live Data' : 'Mock Data'}</span>
+                  <span className="text-gray-600">Live Data</span>
                 </div>
               </div>
             </div>

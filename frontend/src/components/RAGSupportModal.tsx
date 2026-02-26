@@ -43,7 +43,7 @@ export default function RAGSupportModal({
     setIsLoading(true);
 
     try {
-      const response = await ragAPI.query(inputValue, patientId, 4);
+      const response = await ragAPI.query(inputValue, patientId);
       
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -54,10 +54,24 @@ export default function RAGSupportModal({
 
       setMessages(prev => [...prev, assistantMessage]);
     } catch (error) {
+      let errorContent = 'Sorry, I encountered an error. ';
+      
+      if (error instanceof Error) {
+        if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+          errorContent += 'Cannot connect to backend API. Please ensure the backend service is running on port 8000.';
+        } else if (error.message.includes('502') || error.message.includes('503')) {
+          errorContent += 'Backend API is running but pathway-engine RAG service may be unavailable.';
+        } else {
+          errorContent += error.message;
+        }
+      } else {
+        errorContent += 'Please make sure the backend API and pathway-engine RAG service are running.';
+      }
+      
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         type: 'assistant',
-        content: 'Sorry, I encountered an error. Please make sure the RAG service is running on port 8002.',
+        content: errorContent,
         timestamp: new Date()
       };
       
@@ -118,7 +132,7 @@ export default function RAGSupportModal({
                           AI Support Assistant
                         </Dialog.Title>
                         <p className="text-primary-light text-sm mt-0.5">
-                          Ask me anything about patient data
+                          {patientId ? `Patient ${patientId}` : 'General Queries (Default: Patient P1)'}
                         </p>
                       </div>
                     </div>

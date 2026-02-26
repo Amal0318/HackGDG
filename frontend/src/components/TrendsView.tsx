@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Activity, Heart, TrendingUp, Settings, Clock } from 'lucide-react';
 import RiskTrendChart from './RiskTrendChart';
 import VitalsTrendChart from './VitalsTrendChart';
@@ -33,6 +33,18 @@ export default function TrendsView({ patientId, className = '' }: TrendsViewProp
   const [showTimeRangeSelector, setShowTimeRangeSelector] = useState(false);
   const [timeRangeSeconds, setTimeRangeSeconds] = useState(15); // Default 15 seconds
   
+  // Stable timestamp reference to prevent flickering
+  // Update cutoff time every 500ms instead of on every render
+  const [cutoffTimestamp, setCutoffTimestamp] = useState(() => Date.now());
+  
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCutoffTimestamp(Date.now());
+    }, 500); // Update twice per second
+    
+    return () => clearInterval(interval);
+  }, []);
+  
   // Use WebSocket hooks for real-time data
   const {
     isLive: isRiskLive,
@@ -47,18 +59,27 @@ export default function TrendsView({ patientId, className = '' }: TrendsViewProp
   const fullRiskData = getRiskHistory(patientId);
   const fullVitalsData = getPatientVitalsHistory(patientId);
   
-  // Filter data based on selected time range
+  // Filter data based on selected time range using stable cutoff
+  // But ensure we always show at least 10 points for meaningful trends
   const riskData = useMemo(() => {
-    const now = new Date();
-    const cutoffTime = new Date(now.getTime() - timeRangeSeconds * 1000);
-    return fullRiskData.filter((d: any) => new Date(d.timestamp) >= cutoffTime);
-  }, [fullRiskData, timeRangeSeconds]);
+    const cutoffTime = cutoffTimestamp - (timeRangeSeconds * 1000);
+    const filtered = fullRiskData.filter((d: any) => new Date(d.timestamp).getTime() >= cutoffTime);
+    // If filter returns fewer than 10 points, fall back to last 10 points
+    if (filtered.length < 10 && fullRiskData.length > 0) {
+      return fullRiskData.slice(-10);
+    }
+    return filtered;
+  }, [fullRiskData, timeRangeSeconds, cutoffTimestamp]);
 
   const vitalsData = useMemo(() => {
-    const now = new Date();
-    const cutoffTime = new Date(now.getTime() - timeRangeSeconds * 1000);
-    return fullVitalsData.filter((d: any) => new Date(d.timestamp) >= cutoffTime);
-  }, [fullVitalsData, timeRangeSeconds]);
+    const cutoffTime = cutoffTimestamp - (timeRangeSeconds * 1000);
+    const filtered = fullVitalsData.filter((d: any) => new Date(d.timestamp).getTime() >= cutoffTime);
+    // If filter returns fewer than 10 points, fall back to last 10 points
+    if (filtered.length < 10 && fullVitalsData.length > 0) {
+      return fullVitalsData.slice(-10);
+    }
+    return filtered;
+  }, [fullVitalsData, timeRangeSeconds, cutoffTimestamp]);
 
   const toggleVital = (vitalKey: string) => {
     setSelectedVitals(prev => {

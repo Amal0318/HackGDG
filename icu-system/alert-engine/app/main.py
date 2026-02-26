@@ -49,10 +49,10 @@ class AlertEngine:
         self.consumer_group = 'alert-engine'
         
         # Alert threshold
-        self.alert_threshold = float(os.getenv('ALERT_THRESHOLD', '0.75'))
+        self.alert_threshold = float(os.getenv('ALERT_THRESHOLD', '0.85'))
         
         # Cooldown to prevent alert spam (seconds)
-        self.alert_cooldown = 300  # 5 minutes
+        self.alert_cooldown = 900  # 15 minutes (increased from 5 min)
         self.last_alert_time = {}
         
         self.consumer: Optional[KafkaConsumer] = None

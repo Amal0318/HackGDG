@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { Grid3X3, List, Grid, FileText, MessageCircle } from 'lucide-react';
 import clsx from 'clsx';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -19,7 +19,7 @@ export default function NurseDashboard() {
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [showHandoff, setShowHandoff] = useState(false);
   const [showRAG, setShowRAG] = useState(false);
-  const [selectedFloor] = useState(3);
+  const [selectedFloor, setSelectedFloor] = useState(1);
   const [selectedWard] = useState('A');
 
   // Fetch real-time patient data
@@ -45,14 +45,43 @@ export default function NurseDashboard() {
     return result;
   }, [wardPatients, filter]);
 
-  // Apply sorting
+  // Stable display order – only re-orders when user explicitly changes sort
+  const [displayOrder, setDisplayOrder] = useState<string[]>([]);
+  const isFirstLoad = useRef(true);
+
+  useEffect(() => {
+    if (filteredPatients.length > 0 && isFirstLoad.current) {
+      isFirstLoad.current = false;
+      setDisplayOrder(
+        [...filteredPatients]
+          .sort((a, b) => b.riskScore - a.riskScore)
+          .map(p => p.patient_id)
+      );
+    }
+  }, [filteredPatients]);
+
+  const handleSortChange = (newSort: SortType) => {
+    setSortBy(newSort);
+    const reordered = [...filteredPatients]
+      .sort((a, b) => {
+        if (newSort === 'risk') return b.riskScore - a.riskScore;
+        if (newSort === 'bed') return a.bed.localeCompare(b.bed);
+        return 0;
+      })
+      .map(p => p.patient_id);
+    setDisplayOrder(reordered);
+  };
+
+  // Apply stable order – vitals update in place, positions don't shuffle
   const sortedPatients = useMemo(() => {
+    if (displayOrder.length === 0) return filteredPatients;
+    const orderMap = new Map(displayOrder.map((id, i) => [id, i]));
     return [...filteredPatients].sort((a, b) => {
-      if (sortBy === 'risk') return b.riskScore - a.riskScore;
-      if (sortBy === 'bed') return a.bed.localeCompare(b.bed);
-      return 0;
+      const aIdx = orderMap.get(a.patient_id) ?? 999;
+      const bIdx = orderMap.get(b.patient_id) ?? 999;
+      return aIdx - bIdx;
     });
-  }, [filteredPatients, sortBy]);
+  }, [filteredPatients, displayOrder]);
 
   const occupancy = Math.round((wardPatients.length / 8) * 100);
   
@@ -74,6 +103,23 @@ export default function NurseDashboard() {
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Floor {selectedFloor} — Ward {selectedWard}</h1>
+            <div className="flex items-center gap-2 mt-2">
+              <span className="text-xs text-gray-500 font-medium uppercase">Floor:</span>
+              {[1, 2, 3].map((floor) => (
+                <button
+                  key={floor}
+                  onClick={() => setSelectedFloor(floor)}
+                  className={clsx(
+                    'px-3 py-1 rounded-md text-sm font-semibold transition-colors focus-visible-ring',
+                    selectedFloor === floor
+                      ? 'bg-primary text-white'
+                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  )}
+                >
+                  {floor}F
+                </button>
+              ))}
+            </div>
             <p className="text-sm text-gray-600 mt-1">Day Shift (06:00–18:00)</p>
           </div>
           <div className="flex items-center gap-4">
@@ -168,7 +214,7 @@ export default function NurseDashboard() {
           {/* Sort Dropdown */}
           <select
             value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as SortType)}
+            onChange={(e) => handleSortChange(e.target.value as SortType)}
             className="px-3 py-2 border border-gray-300 rounded-md text-sm focus-visible-ring bg-white"
           >
             <option value="risk">Risk ↓</option>

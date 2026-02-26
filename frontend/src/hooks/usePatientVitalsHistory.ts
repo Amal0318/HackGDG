@@ -1,5 +1,5 @@
 // Hook for managing patient vitals history with WebSocket updates
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useWebSocket } from './useWebSocket';
 import { patientsAPI } from '../services/api';
 
@@ -17,11 +17,75 @@ interface PatientVitalsHistory {
   [patientId: string]: VitalsDataPoint[];
 }
 
-const MAX_VITALS_HISTORY_POINTS = 450; // Keep last 450 data points (15 minutes at 2-second intervals)
+const MAX_VITALS_HISTORY_POINTS = 30; // Keep last 30 data points (enough for ~1 minute)
+const UPDATE_THROTTLE_MS = 1000; // Update graph only once per second
+const MAX_POINTS_PER_FLUSH = 5; // Limit points added per flush
+const MAX_AGE_MS = 120000; // Remove points older than 2 minutes
 
 export function usePatientVitalsHistory(patientId?: string) {
   const [vitalsHistory, setVitalsHistory] = useState<PatientVitalsHistory>({});
   const [isLive, setIsLive] = useState(false);
+  
+  // Throttling: buffer to collect incoming data points (array to accumulate all points)
+  const pendingUpdatesRef = useRef<{ [patientId: string]: VitalsDataPoint[] }>({});
+  const throttleTimerRef = useRef<number | null>(null);
+
+  // Flush pending updates to state (called once per second)
+  const flushPendingUpdates = useCallback(() => {
+    const updates = { ...pendingUpdatesRef.current };
+    if (Object.keys(updates).length === 0) return;
+
+    setVitalsHistory(prev => {
+      const next = { ...prev };
+      const now = Date.now();
+      
+      Object.entries(updates).forEach(([pid, pointsBuffer]) => {
+        let newPoints = pointsBuffer;
+        
+        // Limit flush to prevent overwhelming the graph
+        if (newPoints.length > MAX_POINTS_PER_FLUSH) {
+          newPoints = newPoints.slice(-MAX_POINTS_PER_FLUSH);
+        }
+        
+        const currentHistory = next[pid] || [];
+        
+        // Remove old points (older than MAX_AGE_MS)
+        const recentHistory = currentHistory.filter(p => 
+          (now - new Date(p.timestamp).getTime()) < MAX_AGE_MS
+        );
+        
+        // Deduplicate: remove points with timestamps within 1000ms of each other
+        const dedupedPoints: VitalsDataPoint[] = [];
+        newPoints.forEach(point => {
+          const isDuplicate = recentHistory.some(existing => 
+            Math.abs(new Date(existing.timestamp).getTime() - new Date(point.timestamp).getTime()) < 1000
+          );
+          if (!isDuplicate) {
+            dedupedPoints.push(point);
+          }
+        });
+        
+        const updated = [...recentHistory, ...dedupedPoints];
+        next[pid] = updated.slice(-MAX_VITALS_HISTORY_POINTS);
+      });
+      
+      return next;
+    });
+
+    // Clear the buffer
+    pendingUpdatesRef.current = {};
+  }, []);
+
+  // Start throttle timer on mount
+  useEffect(() => {
+    throttleTimerRef.current = setInterval(flushPendingUpdates, UPDATE_THROTTLE_MS);
+    
+    return () => {
+      if (throttleTimerRef.current) {
+        clearInterval(throttleTimerRef.current);
+      }
+    };
+  }, [flushPendingUpdates]);
 
   const handleWebSocketMessage = useCallback((message: any) => {
     if (message.type === 'patient_update' || message.type === 'floor_update') {
@@ -34,13 +98,6 @@ export function usePatientVitalsHistory(patientId?: string) {
         
         // Check if we have any vital signs data
         if (vitals.heart_rate !== undefined || vitals.rolling_hr !== undefined) {
-          console.log(`💓 Vitals update for ${pid}:`, {
-            hr: vitals.heart_rate || vitals.rolling_hr,
-            sbp: vitals.systolic_bp || vitals.rolling_sbp,
-            spo2: vitals.spo2 || vitals.rolling_spo2,
-            timestamp: data.last_updated || data.timestamp
-          });
-          
           const newPoint: VitalsDataPoint = {
             timestamp: data.last_updated || data.timestamp || data.prediction_time || new Date().toISOString(),
             heart_rate: vitals.heart_rate || vitals.rolling_hr || 0,
@@ -51,18 +108,11 @@ export function usePatientVitalsHistory(patientId?: string) {
             temperature: vitals.temperature || 37.0, // fallback
           };
 
-          setVitalsHistory(prev => {
-            const patientHistory = prev[pid] || [];
-            const updated = [...patientHistory, newPoint];
-            
-            // Keep only last MAX_VITALS_HISTORY_POINTS
-            const trimmed = updated.slice(-MAX_VITALS_HISTORY_POINTS);
-            
-            return {
-              ...prev,
-              [pid]: trimmed,
-            };
-          });
+          // Add to buffer array instead of directly updating state (throttled to 1 update/second)
+          if (!pendingUpdatesRef.current[pid]) {
+            pendingUpdatesRef.current[pid] = [];
+          }
+          pendingUpdatesRef.current[pid].push(newPoint);
         }
       }
     }

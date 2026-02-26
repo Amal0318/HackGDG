@@ -37,7 +37,7 @@ os.makedirs(config.OUTPUT_DIR, exist_ok=True)
 with open(config.SCALER_SAVE_PATH, 'wb') as f:
     pickle.dump(scaler, f)
 
-print(f"\n✓ Scaler saved to {config.SCALER_SAVE_PATH}")
+print(f"\n[OK] Scaler saved to {config.SCALER_SAVE_PATH}")
 
 # Also save feature config if missing
 feature_config = {
@@ -53,7 +53,7 @@ import json
 with open(config.CONFIG_SAVE_PATH, 'w') as f:
     json.dump(feature_config, f, indent=4)
 
-print(f"✓ Feature config saved to {config.CONFIG_SAVE_PATH}")
+print(f"[OK] Feature config saved to {config.CONFIG_SAVE_PATH}")
 
 print("\n" + "="*60)
 print("ALL ARTIFACTS READY!")

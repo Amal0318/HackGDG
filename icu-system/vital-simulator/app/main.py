@@ -807,18 +807,18 @@ class VitalSimulator:
         self.critical_state_warnings_logged = 0
         
         if self.debug_mode:
-            logger.info("🔧 DEBUG MODE ENABLED - Events will be printed to console instead of Kafka")
+            logger.info("DEBUG MODE ENABLED - Events will be printed to console instead of Kafka")
         else:
             logger.info(f"Initialized with Kafka servers: {self.kafka_servers}")
 
         if self.scripted_spike_enabled:
             logger.info(
-                "🎯 Scripted gradual spikes ENABLED "
+                "Scripted gradual spikes ENABLED "
                 f"(seed={self.scripted_spike_seed}, cycle={self.scripted_spike_min_cycle}-{self.scripted_spike_max_cycle}s, "
                 f"shape={self.scripted_spike_ramp_up}/{self.scripted_spike_hold}/{self.scripted_spike_ramp_down}s)"
             )
         else:
-            logger.info("🎯 Scripted gradual spikes DISABLED")
+            logger.info("Scripted gradual spikes DISABLED")
 
     async def _scripted_spike_scheduler_loop(self) -> None:
         """Pick a random patient on a deterministic schedule and trigger gradual spikes."""
@@ -859,7 +859,7 @@ class VitalSimulator:
 
                 if started:
                     logger.warning(
-                        f"🎯 Scheduled gradual spike assigned to {target_patient.patient_id}; "
+                        f"Scheduled gradual spike assigned to {target_patient.patient_id}; "
                         "risk should show ramp-up trend instead of abrupt jump"
                     )
 
@@ -898,10 +898,10 @@ class VitalSimulator:
                 request_timeout_ms=30000,
                 api_version=(0, 10, 1)
             )
-            logger.info("✅ Kafka producer initialized successfully")
+            logger.info("Kafka producer initialized successfully")
             return producer
         except Exception as e:
-            logger.error(f"❌ Failed to initialize Kafka producer: {e}")
+            logger.error(f"Failed to initialize Kafka producer: {e}")
             logger.error("Check that Kafka is running and KAFKA_BOOTSTRAP_SERVERS is correct")
             return None
     
@@ -928,7 +928,7 @@ class VitalSimulator:
                     # Debug mode - print to console
                     print(f"\n[DEBUG] {json.dumps(event, indent=2)}")
                     if self.event_count % 10 == 0:
-                        logger.info(f"📊 Generated {self.event_count} events so far")
+                        logger.info(f"Generated {self.event_count} events so far")
                 else:
                     # Production mode - send to Kafka
                     if self.producer:
@@ -936,9 +936,9 @@ class VitalSimulator:
                             future = self.producer.send(self.kafka_topic, value=event)
                             # Log successful publish occasionally
                             if self.event_count % 50 == 0:
-                                logger.info(f"📤 Published {self.event_count} events to Kafka topic '{self.kafka_topic}'")
+                                logger.info(f"Published {self.event_count} events to Kafka topic '{self.kafka_topic}'")
                         except Exception as e:
-                            logger.error(f"❌ Failed to send to Kafka: {e}")
+                            logger.error(f"Failed to send to Kafka: {e}")
                     else:
                         logger.warning("No Kafka producer available - event not sent")
                 
@@ -948,25 +948,25 @@ class VitalSimulator:
                 # Check for realism violations and log warnings
                 if patient.max_shock_index_recorded > 2.0:
                     if not hasattr(patient, '_si_warning_logged'):
-                        logger.warning(f"⚠️ REALISM VIOLATION: Patient {patient.patient_id} shock index exceeded 2.0 (max: {patient.max_shock_index_recorded:.3f})")
+                        logger.warning(f"REALISM VIOLATION: Patient {patient.patient_id} shock index exceeded 2.0 (max: {patient.max_shock_index_recorded:.3f})")
                         patient._si_warning_logged = True
                 
                 # Log critical states and acute events
                 if patient.active_acute_event:
                     logger.warning(
-                        f"🚨 Patient {patient.patient_id} [ACUTE: {patient.active_acute_event.value}] "
+                        f"[ALERT] Patient {patient.patient_id} [ACUTE: {patient.active_acute_event.value}] "
                         f"[{patient.state.value}]: HR={event['heart_rate']}, SBP={event['systolic_bp']}, "
                         f"SpO2={event['spo2']}, SI={event['shock_index']} (Duration: {patient.acute_event_duration}s)"
                     )
                 elif patient.state in [PatientState.CRITICAL, PatientState.INTERVENTION]:
                     logger.warning(
-                        f"🚨 Patient {patient.patient_id} [{patient.state.value}]: "
+                        f"[CRITICAL] Patient {patient.patient_id} [{patient.state.value}]: "
                         f"HR={event['heart_rate']}, SBP={event['systolic_bp']}, "
                         f"SpO2={event['spo2']}, SI={event['shock_index']}"
                     )
                 elif random.random() < 0.05:  # Log 5% of normal readings
                     logger.info(
-                        f"📈 Patient {patient.patient_id} [{patient.state.value}]: "
+                        f"Patient {patient.patient_id} [{patient.state.value}]: "
                         f"HR={event['heart_rate']}, SBP={event['systolic_bp']}, SpO2={event['spo2']}"
                     )
                 
@@ -977,13 +977,13 @@ class VitalSimulator:
                     
                     if critical_percentage > 10:
                         logger.warning(
-                            f"⚠️ REALISM WARNING: {critical_percentage:.1f}% of patients are CRITICAL (>10% threshold). "
+                            f"REALISM WARNING: {critical_percentage:.1f}% of patients are CRITICAL (>10% threshold). "
                             f"Critical patients: {critical_patients}/{len(self.patients)}"
                         )
                         self.critical_state_warnings_logged += 1
                     else:
                         logger.info(
-                            f"✅ Population Distribution Check: {critical_percentage:.1f}% CRITICAL "
+                            f"Population Distribution Check: {critical_percentage:.1f}% CRITICAL "
                             f"({critical_patients}/{len(self.patients)} patients) - Within realistic range"
                         )
                 
@@ -1047,29 +1047,29 @@ class VitalSimulator:
         max_shock_indices = [p.max_shock_index_recorded for p in self.patients.values()]
         highest_shock_index = max(max_shock_indices) if max_shock_indices else 0.0
         
-        logger.info(f"📊 Total Simulation Time: {self.total_simulation_time} seconds")
-        logger.info(f"📊 Total Events Generated: {self.event_count}")
-        logger.info(f"📊 Total Acute Events: {total_acute_events} ({avg_acute_events_per_patient:.1f} per patient)")
-        logger.info(f"📊 Current Critical Patients: {critical_patients}/{len(self.patients)} ({critical_percentage:.1f}%)")
-        logger.info(f"📊 Highest Shock Index Recorded: {highest_shock_index:.3f}")
-        logger.info(f"📊 Critical State Warnings: {self.critical_state_warnings_logged}")
+        logger.info(f"Total Simulation Time: {self.total_simulation_time} seconds")
+        logger.info(f"Total Events Generated: {self.event_count}")
+        logger.info(f"Total Acute Events: {total_acute_events} ({avg_acute_events_per_patient:.1f} per patient)")
+        logger.info(f"Current Critical Patients: {critical_patients}/{len(self.patients)} ({critical_percentage:.1f}%)")
+        logger.info(f"Highest Shock Index Recorded: {highest_shock_index:.3f}")
+        logger.info(f"Critical State Warnings: {self.critical_state_warnings_logged}")
         
         # Validation checks
         if critical_percentage <= 10:
-            logger.info("✅ PASS: Critical patient percentage within realistic range (≤10%)")
+            logger.info("PASS: Critical patient percentage within realistic range (≤10%)")
         else:
-            logger.warning(f"❌ FAIL: Critical patient percentage too high ({critical_percentage:.1f}% > 10%)")
+            logger.warning(f"FAIL: Critical patient percentage too high ({critical_percentage:.1f}% > 10%)")
             
         if highest_shock_index <= 2.0:
-            logger.info("✅ PASS: All shock indices within physiological limits (≤2.0)")
+            logger.info("PASS: All shock indices within physiological limits (≤2.0)")
         else:
-            logger.warning(f"❌ FAIL: Shock index exceeded limit (max: {highest_shock_index:.3f} > 2.0)")
+            logger.warning(f"FAIL: Shock index exceeded limit (max: {highest_shock_index:.3f} > 2.0)")
             
         acute_event_rate = (total_acute_events / self.total_simulation_time) * 100 if self.total_simulation_time > 0 else 0
         if acute_event_rate <= 0.05:  # 0.05% = very rare
-            logger.info(f"✅ PASS: Acute event rate realistic ({acute_event_rate:.3f}% ≤ 0.05%)")
+            logger.info(f"PASS: Acute event rate realistic ({acute_event_rate:.3f}% ≤ 0.05%)")
         else:
-            logger.warning(f"❌ FAIL: Acute event rate too high ({acute_event_rate:.3f}% > 0.05%)")
+            logger.warning(f"FAIL: Acute event rate too high ({acute_event_rate:.3f}% > 0.05%)")
         
         logger.info("=" * 60)
         
@@ -1078,11 +1078,11 @@ class VitalSimulator:
                 logger.info("Flushing remaining Kafka messages...")
                 self.producer.flush(timeout=10)
                 self.producer.close()
-                logger.info("✅ Kafka producer closed gracefully")
+                logger.info("Kafka producer closed gracefully")
             except Exception as e:
-                logger.error(f"❌ Error closing Kafka producer: {e}")
+                logger.error(f"Error closing Kafka producer: {e}")
         
-        logger.info(f"📊 Total events generated: {self.event_count}")
+        logger.info(f"Total events generated: {self.event_count}")
 
 async def main():
     """Main entry point"""
@@ -1093,7 +1093,7 @@ async def main():
         from scenario_api import ScenarioControlAPI
         scenario_api = ScenarioControlAPI(simulator)
         scenario_api.start(port=5001, host='0.0.0.0')
-        logger.info("🎮 Developer Tools API started on port 5001")
+        logger.info("Developer Tools API started on port 5001")
     except Exception as e:
         logger.warning(f"Could not start Scenario API: {e}")
     

@@ -22,7 +22,7 @@ try:
     from inference import SepsisPredictor
     MODEL_AVAILABLE = True
 except Exception as e:
-    print(f"⚠️ Could not import SepsisPredictor: {e}")
+    print(f"WARNING: Could not import SepsisPredictor: {e}")
     MODEL_AVAILABLE = False
 
 import config
@@ -59,15 +59,15 @@ class RealtimeMLService:
         
         if MODEL_AVAILABLE:
             try:
-                logger.info("🔧 Initializing VitalX Sepsis Predictor...")
+                logger.info("Initializing VitalX Sepsis Predictor...")
                 self.predictor = SepsisPredictor()
                 self.use_trained_model = True
-                logger.info("✅ Trained LSTM model loaded successfully!")
+                logger.info("Trained LSTM model loaded successfully!")
             except Exception as e:
-                logger.error(f"⚠️ Failed to load trained model: {e}")
+                logger.error(f"WARNING: Failed to load trained model: {e}")
                 logger.info("Continuing with fallback heuristic...")
         else:
-            logger.warning("⚠️ Trained model not available, using fallback heuristic")
+            logger.warning("WARNING: Trained model not available, using fallback heuristic")
         
         # Kafka consumer for enriched vitals
         self.consumer = None
@@ -105,7 +105,7 @@ class RealtimeMLService:
             compression_type='gzip'
         )
         
-        logger.info(f"✅ Connected to Kafka")
+        logger.info(f"Connected to Kafka")
         logger.info(f"   Consuming: {self.consume_topic}")
         logger.info(f"   Publishing: {self.publish_topic}")
     
@@ -216,7 +216,7 @@ class RealtimeMLService:
                         risk_score = self.predictor.predict(feature_matrix)
                         # Debug: Log prediction details
                         if self.stats['predictions_made'] % 50 == 0:
-                            logger.info(f"🔍 DEBUG Patient {patient_id}: Risk={risk_score:.4f}, HR={event.get('heart_rate')}, BP={event.get('systolic_bp')}, Lactate={event.get('lactate')}")
+                            logger.info(f"DEBUG Patient {patient_id}: Risk={risk_score:.4f}, HR={event.get('heart_rate')}, BP={event.get('systolic_bp')}, Lactate={event.get('lactate')}")
                     except Exception as e:
                         logger.error(f"Model prediction error: {e}, using fallback")
                         risk_score = self.fallback_risk_prediction(event)
@@ -250,7 +250,7 @@ class RealtimeMLService:
                 # Log high-risk predictions
                 if risk_score > 0.7:
                     logger.warning(
-                        f"⚠️ HIGH RISK: Patient {patient_id} - "
+                        f"HIGH RISK: Patient {patient_id} - "
                         f"Risk={risk_score:.3f} "
                         f"(HR={event.get('heart_rate')}, "
                         f"BP={event.get('systolic_bp')}, "
@@ -326,7 +326,7 @@ class RealtimeMLService:
         # Connect to Kafka
         self.connect_kafka()
         
-        logger.info("🚀 ML service started, listening for vitals...")
+        logger.info("ML service started, listening for vitals...")
         
         try:
             while True:
@@ -341,7 +341,7 @@ class RealtimeMLService:
                 if self.stats['events_processed'] % 100 == 0 and self.stats['events_processed'] > 0:
                     elapsed = time.time() - self.stats['start_time']
                     logger.info(
-                        f"📊 Stats: Events={self.stats['events_processed']}, "
+                        f"Stats: Events={self.stats['events_processed']}, "
                         f"Predictions={self.stats['predictions_made']}, "
                         f"Errors={self.stats['errors']}, "
                         f"Uptime={elapsed:.1f}s"

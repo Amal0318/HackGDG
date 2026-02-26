@@ -229,7 +229,7 @@ def train_model(train_dataset, val_dataset, scaler=None, pos_weight=None, save_d
             best_auroc = val_metrics['auroc']
             best_epoch = epoch + 1
             save_model(model, config.MODEL_SAVE_PATH)
-            print(f"✓ Best model saved (AUROC: {best_auroc:.4f})")
+            print(f"[OK] Best model saved (AUROC: {best_auroc:.4f})")
         
         # Checkpoint
         checkpoint_path = os.path.join(
@@ -333,4 +333,4 @@ if __name__ == "__main__":
         pos_weight=pos_weight
     )
     
-    print("\n✓ Training pipeline completed successfully!")
+    print("\n[OK] Training pipeline completed successfully!")

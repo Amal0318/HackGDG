@@ -315,5 +315,5 @@ if __name__ == "__main__":
             print(f"Error: {e}")
     
     print("\n" + "="*60)
-    print("✓ Inference example completed!")
+    print("Inference example completed!")
     print("="*60 + "\n")

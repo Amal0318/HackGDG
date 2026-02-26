@@ -85,13 +85,13 @@ tqdm>=4.62.0
 # ===================================================================
 # Docker Compose Services Reference:
 # ===================================================================
-# ✅ zookeeper          - confluentinc/cp-zookeeper:7.4.0 (Docker image)
-# ✅ kafka              - confluentinc/cp-kafka:7.4.0 (Docker image)
-# ✅ vital-simulator    - ./icu-system/vital-simulator (Python)
-# ✅ pathway-engine     - ./icu-system/pathway-engine (Python)
-# ✅ ml-service         - ./icu-system/ml-service (Python)
-# ✅ backend-api        - ./icu-system/backend-api (Python)
-# ✅ rag-service        - ./icu-system/rag-service (Python)
-# ✅ alert-system       - ./icu-system/alert-system (Python)
-# ✅ frontend           - ./frontend (React/TypeScript - separate package.json)
+# [OK] zookeeper          - confluentinc/cp-zookeeper:7.4.0 (Docker image)
+# [OK] kafka              - confluentinc/cp-kafka:7.4.0 (Docker image)
+# [OK] vital-simulator    - ./icu-system/vital-simulator (Python)
+# [OK] pathway-engine     - ./icu-system/pathway-engine (Python)
+# [OK] ml-service         - ./icu-system/ml-service (Python)
+# [OK] backend-api        - ./icu-system/backend-api (Python)
+# [OK] rag-service        - ./icu-system/rag-service (Python)
+# [OK] alert-system       - ./icu-system/alert-system (Python)
+# [OK] frontend           - ./frontend (React/TypeScript - separate package.json)
 # ===================================================================

@@ -273,7 +273,7 @@ class ICUReportGenerator:
         if not vitals_history or len(vitals_history) < 2:
             warning_text = """
             <para>
-            <b>⚠ Insufficient Historical Data:</b> System needs at least 2-3 minutes of continuous 
+            <b>WARNING - Insufficient Historical Data:</b> System needs at least 2-3 minutes of continuous 
             monitoring to generate trend graphs. Currently {count} data points available.
             </para>
             <para>
@@ -333,7 +333,7 @@ class ICUReportGenerator:
         if not timestamps or len(timestamps) < 2:
             warning_text = """
             <para>
-            <b>⚠ Data Format Issue:</b> Unable to parse sufficient historical entries. 
+            <b>WARNING - Data Format Issue:</b> Unable to parse sufficient historical entries. 
             Parsed {parsed} out of {total} entries.
             </para>
             """.format(parsed=len(timestamps), total=len(vitals_history))
@@ -444,7 +444,7 @@ class ICUReportGenerator:
         if not risk_history or len(risk_history) < 2:
             warning_text = """
             <para>
-            <b>⚠ Insufficient Risk History:</b> System needs at least 2-3 minutes of risk predictions 
+            <b>WARNING - Insufficient Risk History:</b> System needs at least 2-3 minutes of risk predictions 
             to generate trend chart. Currently {count} data points available.
             </para>
             """.format(count=len(risk_history) if risk_history else 0)

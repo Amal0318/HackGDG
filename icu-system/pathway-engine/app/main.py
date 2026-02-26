@@ -161,7 +161,7 @@ class VitalXPathwayEngine:
         """Start the Pathway streaming engine"""
         try:
             logger.info("=" * 80)
-            logger.info(f"🚀 Starting {self.engine_name} v{self.version}")
+            logger.info(f"Starting {self.engine_name} v{self.version}")
             logger.info("=" * 80)
             
             # Initialize components
@@ -180,9 +180,9 @@ class VitalXPathwayEngine:
             
             # Start streaming
             self.is_running = True
-            logger.info("🔄 VitalX Pathway Engine started successfully")
-            logger.info("📈 Publishing enriched vital signs stream")
-            logger.info("🎯 Real-time risk analysis and anomaly detection active")
+            logger.info("VitalX Pathway Engine started successfully")
+            logger.info("Publishing enriched vital signs stream")
+            logger.info("Real-time risk analysis and anomaly detection active")
             logger.info("-" * 80)
             
             # Run the Pathway streaming computation
@@ -203,13 +203,13 @@ class VitalXPathwayEngine:
     def shutdown(self):
         """Graceful shutdown procedure"""
         try:
-            logger.info("🛑 Initiating graceful shutdown...")
+            logger.info("Initiating graceful shutdown...")
             self.is_running = False
             
             # Additional cleanup can be added here
             # (close connections, flush buffers, etc.)
             
-            logger.info("✅ VitalX Pathway Engine shut down complete")
+            logger.info("VitalX Pathway Engine shut down complete")
             logger.info("=" * 80)
             
         except Exception as e:

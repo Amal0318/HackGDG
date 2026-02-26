@@ -22,7 +22,7 @@ class RequestlyService:
         self.enabled = True
         self.mock_mode = False  # Disable mock mode - use real data only
         self.request_log = []
-        logger.info("🔧 Requestly Service initialized - Real-time mode (Sponsor Integration)")
+        logger.info("Requestly Service initialized - Real-time mode (Sponsor Integration)")
     
     def log_api_request(self, endpoint: str, method: str, user: Optional[str] = None):
         """
@@ -42,17 +42,17 @@ class RequestlyService:
         if len(self.request_log) > 1000:
             self.request_log = self.request_log[-1000:]
         
-        logger.debug(f"📊 Requestly: {method} {endpoint} by {user}")
+        logger.debug(f"[Requestly] {method} {endpoint} by {user}")
     
     def enable_mock_mode(self):
         """Enable mock mode for fallback"""
         self.mock_mode = True
-        logger.info("🎭 Requestly Mock Mode ENABLED - Using mock patient data")
+        logger.info("Requestly Mock Mode ENABLED - Using mock patient data")
     
     def disable_mock_mode(self):
         """Disable mock mode"""
         self.mock_mode = False
-        logger.info("✅ Requestly Mock Mode DISABLED - Using live Kafka data")
+        logger.info("Requestly Mock Mode DISABLED - Using live Kafka data")
     
     def get_mock_patient_data(self, patient_id: str, floor_id: str) -> dict:
         """

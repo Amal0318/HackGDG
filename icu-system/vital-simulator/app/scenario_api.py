@@ -64,7 +64,7 @@ class ScenarioControlAPI:
             else:
                 return jsonify({"error": f"Unknown scenario type: {scenario_type}"}), 400
             
-            logger.info(f"🎯 Triggered {scenario_type} scenario for {patient_id} (severity={severity}, duration={duration}s)")
+            logger.info(f"Triggered {scenario_type} scenario for {patient_id} (severity={severity}, duration={duration}s)")
             
             return jsonify({
                 "status": "success",
@@ -104,7 +104,7 @@ class ScenarioControlAPI:
             patient.acute_event_duration = 0
             patient.scripted_spike_active = False
             
-            logger.info(f"🔄 Reset {patient_id} to healthy baseline")
+            logger.info(f"Reset {patient_id} to healthy baseline")
             
             return jsonify({
                 "status": "success",
@@ -210,7 +210,7 @@ class ScenarioControlAPI:
             respiratory_rate=30.0,
             temperature=38.5
         )
-        logger.warning(f"⚠️ Set {patient.patient_id} to CRITICAL condition")
+        logger.warning(f"WARNING: Set {patient.patient_id} to CRITICAL condition")
     
     def _apply_recovery_scenario(self, patient):
         """Trigger rapid recovery"""
@@ -220,14 +220,14 @@ class ScenarioControlAPI:
         
         # Reset to baseline with slight variations
         patient.last_vitals = patient._initialize_stable_vitals()
-        logger.info(f"💚 Triggered recovery for {patient.patient_id}")
+        logger.info(f"Triggered recovery for {patient.patient_id}")
     
     def start(self, port=5001, host='0.0.0.0'):
         """Start the API server in a background thread"""
         def run():
-            logger.info(f"🎮 Developer Tools API starting on {host}:{port}")
+            logger.info(f"Developer Tools API starting on {host}:{port}")
             self.app.run(host=host, port=port, debug=False, use_reloader=False)
         
         thread = threading.Thread(target=run, daemon=True)
         thread.start()
-        logger.info("✅ Scenario Control API ready")
+        logger.info("Scenario Control API ready")

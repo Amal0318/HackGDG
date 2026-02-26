@@ -169,7 +169,7 @@ def train_model_trial(train_dataset, val_dataset, pos_weight=None, num_epochs=3)
         print_metrics(val_metrics, "Validation")
     
     print(f"\n{'='*60}")
-    print("✓ TRIAL COMPLETED - NO ERRORS!")
+    print("[OK] TRIAL COMPLETED - NO ERRORS!")
     print(f"{'='*60}")
     
     return model
@@ -219,7 +219,7 @@ if __name__ == "__main__":
         dst_file = os.path.join(temp_dir, os.path.basename(src_file))
         shutil.copy2(src_file, dst_file)
     
-    print(f"\n✓ Subset prepared in {temp_dir}")
+    print(f"\n[OK] Subset prepared in {temp_dir}")
     
     # Load dataset from subset
     print("\nLoading full dataset from subset...")
@@ -252,7 +252,7 @@ if __name__ == "__main__":
     try:
         model = train_model_trial(train_dataset, val_dataset, pos_weight=pos_weight, num_epochs=3)
         print("\n" + "="*60)
-        print("✓ TRIAL SUCCESSFUL - Ready for full training!")
+        print("[OK] TRIAL SUCCESSFUL - Ready for full training!")
         print("="*60)
     except Exception as e:
         print(f"\n{'='*60}")

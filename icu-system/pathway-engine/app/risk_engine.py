@@ -46,7 +46,7 @@ class VitalXRiskEngine:
         self.sbp_threshold = settings.risk_engine.sbp_anomaly_threshold
         self.shock_index_threshold = settings.risk_engine.shock_index_anomaly_threshold
         
-        logger.info(f"🚀 Risk engine initialized with LATEST-STATE strategy")
+        logger.info(f"Risk engine initialized with LATEST-STATE strategy")
         logger.info(f"   Weights: shock={self.shock_weight}, hr={self.hr_weight}, "
                    f"sbp={self.sbp_weight}, spo2={self.spo2_weight}")
     
@@ -71,7 +71,7 @@ class VitalXRiskEngine:
         Result: ~1:1 growth ratio (vitals:vitals_enriched)
         """
         
-        logger.info("📊 Starting STATEFUL enrichment pipeline (NO WINDOWING)")
+        logger.info("Starting STATEFUL enrichment pipeline (NO WINDOWING)")
         
         # =========================================================
         # STEP 1: Simple stateful aggregation by patient_id
@@ -82,7 +82,7 @@ class VitalXRiskEngine:
         # SINGLE GROUPBY to prevent 2x multiplication
         # =========================================================
         
-        logger.info("👤 Creating stateful aggregates per patient (single groupby)")
+        logger.info("Creating stateful aggregates per patient (single groupby)")
         aggregates = vitals_stream.groupby(vitals_stream.patient_id).reduce(
             patient_id=pw.this.patient_id,
             timestamp=pw.reducers.any(pw.this.timestamp),  # Latest timestamp
@@ -111,7 +111,7 @@ class VitalXRiskEngine:
         # Compute hr_trend and sbp_trend without creating new records
         # =========================================================
         
-        logger.info("📈 Computing trends and selecting final fields")
+        logger.info("Computing trends and selecting final fields")
         enriched = aggregates.with_columns(
             hr_trend=pw.this.max_hr - pw.this.min_hr,
             sbp_trend=pw.this.max_sbp - pw.this.min_sbp,
@@ -136,7 +136,7 @@ class VitalXRiskEngine:
         # Apply UDFs to add computed fields
         # =========================================================
         
-        logger.info("⚠️  Computing risk scores and anomalies")
+        logger.info("Computing risk scores and anomalies")
         with_risk = enriched.with_columns(
             computed_risk=pw.apply(
                 self._calculate_risk_udf,
@@ -160,7 +160,7 @@ class VitalXRiskEngine:
         # Forward only enriched features (not raw vitals)
         # =========================================================
         
-        logger.info("✂️  Selecting final enriched fields")
+        logger.info("Selecting final enriched fields")
         final_output = with_risk.select(
             patient_id=pw.this.patient_id,
             timestamp=pw.this.timestamp,
@@ -176,7 +176,7 @@ class VitalXRiskEngine:
             temperature=pw.this.temperature,
         )
         
-        logger.info("✅ Stateful enrichment complete - LINEAR GROWTH (1:1 ratio expected)")
+        logger.info("Stateful enrichment complete - LINEAR GROWTH (1:1 ratio expected)")
         return final_output
     
     def _calculate_risk_udf(self, 

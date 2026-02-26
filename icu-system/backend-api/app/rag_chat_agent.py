@@ -27,7 +27,7 @@ class RAGChatAgent:
         
         self.llm = self._initialize_llm()
         self.chat_chain = self._create_chat_chain()
-        logger.info(f"🧠 RAG Chat Agent initialized with {self.llm_provider.upper()}")
+        logger.info(f"RAG Chat Agent initialized with {self.llm_provider.upper()}")
     
     def _initialize_llm(self):
         """Initialize LLM based on provider"""

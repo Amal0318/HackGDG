@@ -109,9 +109,9 @@ async def lifespan(app: FastAPI):
         state.model.eval()
         
         total_params = sum(p.numel() for p in state.model.parameters())
-        print(f"✓ Model loaded ({total_params:,} parameters)")
+        print(f"[OK] Model loaded ({total_params:,} parameters)")
     except Exception as e:
-        print(f"✗ Failed to load model: {e}")
+        print(f"[ERROR] Failed to load model: {e}")
         raise
     
     # Load scaler (optional - use identity if not available)
@@ -119,12 +119,12 @@ async def lifespan(app: FastAPI):
         print(f"Loading feature scaler from {SCALER_PATH}...")
         with open(SCALER_PATH, 'rb') as f:
             state.scaler = pickle.load(f)
-        print(f"✓ Scaler loaded")
+        print(f"[OK] Scaler loaded")
     except FileNotFoundError:
-        print("⚠ Scaler not found - using identity scaling")
+        print("[WARNING] Scaler not found - using identity scaling")
         state.scaler = None
     except Exception as e:
-        print(f"⚠ Failed to load scaler: {e} - using identity scaling")
+        print(f"[WARNING] Failed to load scaler: {e} - using identity scaling")
         state.scaler = None
     
     print("="*60)

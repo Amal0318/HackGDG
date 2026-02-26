@@ -128,7 +128,7 @@ def run_complete_pipeline(use_subset=False):
     
     # If using subset, limit files
     if use_subset:
-        print("\n⚠️  Using SUBSET mode (for quick testing)")
+        print("\n[WARNING] Using SUBSET mode (for quick testing)")
         train_files = train_files[:20]
         val_files = val_files[:5]
         test_files = test_files[:5]
@@ -215,7 +215,7 @@ def run_complete_pipeline(use_subset=False):
                 print(f"  Error: {e}")
         
         print("\n" + "="*60)
-        print("✅ PIPELINE COMPLETED SUCCESSFULLY!")
+        print("[OK] PIPELINE COMPLETED SUCCESSFULLY!")
         print("="*60)
         print(f"\nOutputs saved to: {config.OUTPUT_DIR}")
         print("  - model.pth")

@@ -265,7 +265,7 @@ def main():
     report_path = os.path.join(config.OUTPUT_DIR, 'evaluation_report.json')
     save_evaluation_report(results, report_path)
     
-    print("\n✓ Evaluation completed successfully!")
+    print("\n[OK] Evaluation completed successfully!")
     print(f"Results saved to {config.OUTPUT_DIR}")
 
 

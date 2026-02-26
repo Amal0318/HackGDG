@@ -2,9 +2,21 @@
 # VitalX ICU Digital Twin System - Unified Requirements
 # Real-time ICU Patient Monitoring with AI-Powered Risk Prediction
 # ===================================================================
+# 
+# This file consolidates all Python dependencies from docker-compose.yml services:
+#   - vital-simulator: Synthetic ICU telemetry data generator
+#   - pathway-engine: Real-time streaming data processor
+#   - ml-service: LSTM-based deterioration prediction engine
+#   - backend-api: FastAPI REST + WebSocket gateway
+#   - rag-service: AI-powered patient data query interface
+#   - alert-system: LangChain intelligent emergency notifications
+# 
+# Frontend (React/TypeScript) uses separate frontend/package.json
+# Infrastructure (Kafka, Zookeeper) uses Docker images
+# ===================================================================
 
 # ===================================================================
-# Core Web Framework & API
+# Core Web Framework & API (backend-api, rag-service, pathway-engine)
 # ===================================================================
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
@@ -12,17 +24,19 @@ websockets==12.0
 pydantic==2.5.0
 python-dotenv==1.0.0
 aiofiles==23.1.0
+flask==3.0.0
+flask-cors==4.0.0
 
 # ===================================================================
-# Streaming & Message Queue
+# Streaming & Message Queue (all services)
 # ===================================================================
 kafka-python==2.0.2
 confluent-kafka>=2.3.0
 
 # ===================================================================
-# Machine Learning & Deep Learning
+# Machine Learning & Deep Learning (ml-service)
 # ===================================================================
-# PyTorch for LSTM Model
+# PyTorch for LSTM Risk Prediction Model (trained on MIMIC-IV)
 torch==2.2.0
 torchvision==0.17.0
 torchaudio==2.2.0
@@ -33,22 +47,24 @@ pandas==2.2.0
 scikit-learn==1.4.0
 
 # ===================================================================
-# Pathway Real-time Streaming Engine
+# Pathway Real-time Streaming Engine (pathway-engine)
 # ===================================================================
 pathway>=0.8.0
 sentence-transformers>=2.2.2
 
 # ===================================================================
-# LangChain AI Agents & LLM Integration
+# LangChain AI Agents & LLM Integration (alert-system, rag-service, backend-api)
 # ===================================================================
 langchain==0.1.0
 langchain-openai==0.0.5
 langchain-google-genai==1.0.0
+langchain-community==0.0.10
 openai==1.6.1
 google-generativeai==0.3.2
+groq>=0.9.0
 
 # ===================================================================
-# PDF Report Generation
+# PDF Report Generation (backend-api)
 # ===================================================================
 reportlab>=4.0.0
 matplotlib>=3.8.0
@@ -56,9 +72,9 @@ pillow>=10.0.0
 seaborn>=0.11.0
 
 # ===================================================================
-# HTTP Client & API Communication
+# HTTP Client & API Communication (backend-api, rag-service)
 # ===================================================================
-httpx>=0.24.0
+httpx>=0.27.0
 requests>=2.31.0
 
 # ===================================================================
@@ -67,20 +83,15 @@ requests>=2.31.0
 tqdm>=4.62.0
 
 # ===================================================================
-# Development & Utilities
+# Docker Compose Services Reference:
 # ===================================================================
-flask==3.0.0
-flask-cors==4.0.0
-
-# ===================================================================
-# Notes:
-# - All services are containerized using Docker
-# - This file consolidates all Python dependencies across:
-#   * Backend API (FastAPI + WebSocket)
-#   * Pathway Streaming Engine (Real-time RAG)
-#   * ML Service (LSTM Risk Prediction)
-#   * Alert System (LangChain Agents)
-#   * Vital Simulator (Physiological Data Generator)
-# - Frontend (React/TypeScript) dependencies in frontend/package.json
-# - Kafka & Zookeeper run as official Docker images
+# ✅ zookeeper          - confluentinc/cp-zookeeper:7.4.0 (Docker image)
+# ✅ kafka              - confluentinc/cp-kafka:7.4.0 (Docker image)
+# ✅ vital-simulator    - ./icu-system/vital-simulator (Python)
+# ✅ pathway-engine     - ./icu-system/pathway-engine (Python)
+# ✅ ml-service         - ./icu-system/ml-service (Python)
+# ✅ backend-api        - ./icu-system/backend-api (Python)
+# ✅ rag-service        - ./icu-system/rag-service (Python)
+# ✅ alert-system       - ./icu-system/alert-system (Python)
+# ✅ frontend           - ./frontend (React/TypeScript - separate package.json)
 # ===================================================================

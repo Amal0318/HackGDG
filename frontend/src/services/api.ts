@@ -300,16 +300,20 @@ const BACKEND_API_URL = 'http://localhost:8000';
 
 export const ragAPI = {
   async query(question: string, patientId?: string): Promise<any> {
-    // Use default patient ID if none provided (for general queries)
-    const actualPatientId = patientId || 'P1';
+    // Create request body - only include patient_id if provided
+    const requestBody: any = {
+      question: question
+    };
+    
+    // Only add patient_id for specific patient queries
+    if (patientId) {
+      requestBody.patient_id = patientId;
+    }
     
     const response = await fetch(`${BACKEND_API_URL}/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        patient_id: actualPatientId,
-        question: question
-      })
+      body: JSON.stringify(requestBody)
     });
     
     if (!response.ok) {

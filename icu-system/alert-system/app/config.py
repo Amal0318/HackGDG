@@ -49,7 +49,7 @@ class Settings:
     BACKEND_API_URL = os.getenv("BACKEND_API_URL", "http://localhost:8000")
     
     # Alert Rate Limiting (avoid spam)
-    MIN_ALERT_INTERVAL_SECONDS = 900  # 15 minutes between alerts for same patient (increased from 5 min)
+    MIN_ALERT_INTERVAL_SECONDS = int(os.getenv("MIN_ALERT_INTERVAL_SECONDS", "900"))  # 15 minutes between alerts for same patient (increased from 5 min)
     
     # LLM Settings
     LLM_TEMPERATURE = 0.3  # Lower = more consistent

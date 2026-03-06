@@ -148,36 +148,36 @@ services:
       GEMINI_MODEL: gemini-2.5-flash
       GEMINI_API_KEY: AIzaSyDguHo0ev9d4sYpWINhNxxbIJ5kiisYmV8
       ENABLE_CONSOLE_ALERTS: "true"
-      ENABLE_EMAIL_ALERTS: ${ENABLE_EMAIL_ALERTS:-false}
-      SMTP_SERVER: ${SMTP_SERVER:-smtp.gmail.com}
-      SMTP_PORT: ${SMTP_PORT:-587}
-      SMTP_USERNAME: ${SMTP_USERNAME}
-      SMTP_PASSWORD: ${SMTP_PASSWORD}
-      ALERT_EMAIL_FROM: ${ALERT_EMAIL_FROM:-icu-alerts@hospital.com}
-      ALERT_EMAIL_TO: ${ALERT_EMAIL_TO}
+      ENABLE_EMAIL_ALERTS: "true"
+      SMTP_SERVER: "smtp.gmail.com"
+      SMTP_PORT: "587"
+      SMTP_USERNAME: "lokeshkumar19.4.2007@gmail.com"
+      SMTP_PASSWORD: "leiyepigeeiovxxe"
+      ALERT_EMAIL_FROM: "icu-alerts@hospital.com"
+      ALERT_EMAIL_TO: "sriram.rp08@gmail.com"
       BACKEND_API_URL: http://backend-api:8000
       HIGH_RISK_THRESHOLD: 0.85
+      MIN_ALERT_INTERVAL_SECONDS: "60"
     networks:
       - icu-network
     restart: unless-stopped
 
-  # Standalone RAG service removed - Using integrated RAG inside pathway-engine
-  # Frontend now uses backend API /chat endpoint which queries pathway-engine:8080
-  # rag-service:
-  #   build:
-  #     context: ./rag-service
-  #   container_name: icu-rag-service
-  #   ports:
-  #     - "8002:8000"
-  #   depends_on:
-  #     kafka:
-  #       condition: service_healthy
-  #   environment:
-  #     KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-  #     GROQ_API_KEY: ${GROQ_API_KEY}
-  #   networks:
-  #     - icu-network
-  #   restart: unless-stopped
+  # RAG Service - Live Kafka-indexed RAG with LLM
+  rag-service:
+    build:
+      context: ./rag-service
+    container_name: icu-rag-service
+    ports:
+      - "8002:8000"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+    networks:
+      - icu-network
+    restart: unless-stopped
 
   frontend:
     build:

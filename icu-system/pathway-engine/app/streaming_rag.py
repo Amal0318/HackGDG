@@ -198,21 +198,25 @@ class StreamingRAGIndex:
     
     def query(
         self, 
-        patient_id: str, 
-        query_text: str, 
+        patient_id: Optional[str] = None, 
+        query_text: str = "", 
         top_k: int = 5
     ) -> List[Dict]:
         """
-        Query patient's streaming index
+        Query patient's streaming index or all patients
         
         Args:
-            patient_id: Patient identifier
+            patient_id: Patient identifier (None = query all patients)
             query_text: Natural language query
             top_k: Number of results to return
             
         Returns:
             List of retrieved contexts with relevance scores
         """
+        
+        # If no patient_id provided, query all patients
+        if patient_id is None:
+            return self._query_all_patients(query_text, top_k)
         
         if patient_id not in self.patient_indices:
             logger.warning(f"No index found for patient {patient_id}")
@@ -261,6 +265,78 @@ class StreamingRAGIndex:
             
         except Exception as e:
             logger.error(f"Error querying RAG index: {e}", exc_info=True)
+            return []
+    
+    def _query_all_patients(self, query_text: str, top_k: int = 5) -> List[Dict]:
+        """
+        Query across all patient indices
+        
+        Args:
+            query_text: Natural language query
+            top_k: Number of results to return
+            
+        Returns:
+            List of retrieved contexts from all patients with relevance scores
+        """
+        if len(self.patient_indices) == 0:
+            logger.warning("No patient indices available for querying")
+            return []
+        
+        try:
+            # Embed query
+            query_embedding = self.model.encode(query_text)
+            
+            # Collect similarities from all patients
+            all_similarities = []
+            
+            for patient_id, patient_index in self.patient_indices.items():
+                if len(patient_index) == 0:
+                    continue
+                    
+                for entry in patient_index:
+                    similarity = self._cosine_similarity(
+                        query_embedding, 
+                        entry['embedding']
+                    )
+                    # Add patient_id to the entry for multi-patient results
+                    entry_with_patient = {
+                        'patient_id': patient_id,
+                        'text': entry['text'],
+                        'timestamp': entry['timestamp'],
+                        'embedding': entry['embedding'],
+                        'raw_data': entry['raw_data']
+                    }
+                    all_similarities.append((similarity, entry_with_patient))
+            
+            if not all_similarities:
+                logger.warning("No data found across any patient indices")
+                return []
+            
+            # Sort by similarity (descending)
+            all_similarities.sort(key=lambda x: x[0], reverse=True)
+            
+            # Return top-k results from all patients
+            results = []
+            for similarity, entry in all_similarities[:top_k]:
+                results.append({
+                    'patient_id': entry['patient_id'],
+                    'text': entry['text'],
+                    'timestamp': entry['timestamp'].isoformat(),
+                    'relevance_score': float(similarity),
+                    'raw_data': {
+                        'heart_rate': entry['raw_data'].get('heart_rate'),
+                        'systolic_bp': entry['raw_data'].get('systolic_bp'),
+                        'shock_index': entry['raw_data'].get('shock_index'),
+                        'lactate': entry['raw_data'].get('lactate'),
+                        'anomaly_flag': entry['raw_data'].get('anomaly_flag')
+                    }
+                })
+            
+            logger.debug(f"Query '{query_text}' across all patients: {len(results)} results")
+            return results
+            
+        except Exception as e:
+            logger.error(f"Error querying all patients: {e}", exc_info=True)
             return []
     
     def _cosine_similarity(self, a: np.ndarray, b: np.ndarray) -> float:

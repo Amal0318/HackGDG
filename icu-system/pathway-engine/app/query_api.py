@@ -22,7 +22,7 @@ app = FastAPI(
 
 class QueryRequest(BaseModel):
     """Query request schema"""
-    patient_id: str = Field(..., description="Patient identifier")
+    patient_id: Optional[str] = Field(None, description="Patient identifier (optional - if not provided, queries all patients)")
     query_text: str = Field(..., description="Natural language query")
     top_k: int = Field(5, ge=1, le=20, description="Number of results to return")
     
@@ -37,7 +37,7 @@ class QueryRequest(BaseModel):
 
 class QueryResponse(BaseModel):
     """Query response schema"""
-    patient_id: str
+    patient_id: Optional[str]
     query_text: str
     retrieved_context: List[Dict]
     result_count: int

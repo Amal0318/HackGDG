@@ -6,7 +6,7 @@ WebSocket streaming + REST endpoints + RAG chat integration
 import asyncio
 import logging
 from contextlib import asynccontextmanager
-from typing import List, Set
+from typing import List, Set, Optional
 import httpx
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
@@ -31,8 +31,8 @@ stream_merger: StreamMerger = None
 # Active WebSocket connections
 websocket_connections: Set[WebSocket] = set()
 
-# Pathway Query API URL
-PATHWAY_API_URL = "http://pathway-engine:8080"
+# RAG Service URL (live Kafka-indexed RAG with LLM)
+RAG_SERVICE_URL = "http://icu-rag-service:8000"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -78,7 +78,7 @@ app.add_middleware(
 
 class ChatRequest(BaseModel):
     """Chat request schema"""
-    patient_id: str = Field(..., description="Patient identifier")
+    patient_id: Optional[str] = Field(None, description="Patient identifier (optional - leave empty for general queries)")
     question: str = Field(..., description="User question")
     
     class Config:
@@ -360,57 +360,87 @@ async def chat(request: ChatRequest):
     1. Query Pathway RAG for relevant context
     2. Pass context + question to LLM
     3. Return grounded response with sources
+    
+    Supports both:
+    - Specific patient queries (with patient_id)
+    - General queries across all patients (without patient_id)
     """
     
     if stream_merger is None:
         raise HTTPException(status_code=503, detail="Stream merger not initialized")
     
-    # Step 1: Query Pathway RAG
+    # Step 1: Query RAG Service (live Kafka-indexed RAG)
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
+            # Build query payload for RAG service
+            query_payload = {
+                "question": request.question,
+                "time_window_hours": 4
+            }
+            
+            # Only include patient_id if provided (for specific patient queries)
+            if request.patient_id:
+                query_payload["patient_id"] = request.patient_id
+            
             rag_response = await client.post(
-                f"{PATHWAY_API_URL}/query",
-                json={
-                    "patient_id": request.patient_id,
-                    "query_text": request.question,
-                    "top_k": 5
-                }
+                f"{RAG_SERVICE_URL}/api/handoff/query",
+                json=query_payload
             )
             
         if rag_response.status_code != 200:
             raise HTTPException(
                 status_code=502,
-                detail=f"Pathway RAG query failed: {rag_response.status_code}"
+                detail=f"RAG Service query failed: {rag_response.status_code}"
             )
         
         rag_data = rag_response.json()
-        retrieved_context = rag_data.get('retrieved_context', [])
+        # RAG service returns {answer, context_used, success}
+        retrieved_context = rag_data.get('context_used', [])
         
     except httpx.RequestError as e:
         logger.error(f"RAG query error: {e}")
         raise HTTPException(
             status_code=502,
-            detail=f"Failed to connect to Pathway RAG: {str(e)}"
+            detail=f"Failed to connect to RAG Service: {str(e)}"
         )
     
-    # Step 2: Generate LLM response using LangChain
-    chat_agent = get_chat_agent()
+    # Step 2: Extract answer from RAG service (already has LLM processing)
+    answer = rag_data.get('answer', '')
     
-    if not retrieved_context:
-        answer = f"No recent data available for patient {request.patient_id} to answer this question."
+    # If RAG service returned answer, use it directly
+    if answer and rag_data.get('success', False):
+        # RAG service already processed with LLM
+        pass
     else:
-        # Generate intelligent response using LangChain
-        answer = chat_agent.generate_response(
-            patient_id=request.patient_id,
-            question=request.question,
-            retrieved_context=retrieved_context
-        )
+        # Fallback: use our own LangChain agent if RAG service doesn't have LLM
+        chat_agent = get_chat_agent()
+        
+        if not retrieved_context:
+            if request.patient_id:
+                answer = f"No recent data available for patient {request.patient_id} to answer this question."
+            else:
+                answer = "No recent patient data found to answer this question."
+        else:
+            # Generate intelligent response using LangChain
+            answer = chat_agent.generate_response(
+                patient_id=request.patient_id,
+                question=request.question,
+                retrieved_context=retrieved_context
+            )
+    
+    # Transform context_used (strings) to sources (dicts) for response model
+    formatted_sources = []
+    for i, context_text in enumerate(retrieved_context[:3]):  # Top 3 sources
+        formatted_sources.append({
+            "text": context_text,
+            "index": i
+        })
     
     return ChatResponse(
-        patient_id=request.patient_id,
+        patient_id=request.patient_id or "ALL",  # Use "ALL" for general queries
         question=request.question,
         answer=answer,
-        sources=retrieved_context[:3]  # Return top 3 sources
+        sources=formatted_sources
     )
 
 # ================== PDF Report Generation ==================

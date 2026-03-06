@@ -132,7 +132,7 @@ export default function RAGSupportModal({
                           AI Support Assistant
                         </Dialog.Title>
                         <p className="text-primary-light text-sm mt-0.5">
-                          {patientId ? `Patient ${patientId}` : 'General Queries (Default: Patient P1)'}
+                          {patientId ? `Patient ${patientId} - Specific Query` : 'General Queries - All Patients'}
                         </p>
                       </div>
                     </div>

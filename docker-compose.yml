@@ -10,6 +10,11 @@ services:
       ZOOKEEPER_TICK_TIME: 2000
     networks:
       - icu-network
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "2181"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # Kafka - Message broker for real-time data streaming
   # Enables decoupled communication between ICU data sources and processing services
@@ -18,7 +23,8 @@ services:
     hostname: kafka
     container_name: icu-kafka
     depends_on:
-      - zookeeper
+      zookeeper:
+        condition: service_healthy
     ports:
       - "29092:29092"
     environment:
@@ -32,6 +38,12 @@ services:
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
     networks:
       - icu-network
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092 || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
 
   # Vital Simulator - Generates synthetic ICU telemetry data
   # Isolated service that produces patient monitoring data streams
@@ -41,7 +53,8 @@ services:
       dockerfile: Dockerfile
     container_name: icu-vital-simulator
     depends_on:
-      - kafka
+      kafka:
+        condition: service_healthy
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
     networks:
@@ -56,7 +69,8 @@ services:
       dockerfile: Dockerfile
     container_name: icu-pathway-engine
     depends_on:
-      - kafka
+      kafka:
+        condition: service_healthy
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
     networks:
@@ -72,6 +86,9 @@ services:
     container_name: icu-ml-service
     ports:
       - "8001:8000"
+    depends_on:
+      kafka:
+        condition: service_healthy
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
     networks:
@@ -88,8 +105,10 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      - kafka
-      - ml-service
+      kafka:
+        condition: service_healthy
+      ml-service:
+        condition: service_started
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
       - ML_SERVICE_URL=http://ml-service:8000
@@ -107,12 +126,14 @@ services:
     ports:
       - "8002:8000"
     depends_on:
-      - kafka
+      kafka:
+        condition: service_healthy
+    env_file:
+      - ./icu-system/.env
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
       - KAFKA_TOPICS=vitals
-      - GROQ_API_KEY=${GROQ_API_KEY:-}
-      - GROQ_MODEL=llama3-70b-8192
+      - GROQ_MODEL=llama-3.3-70b-versatile
       - DATA_RETENTION_HOURS=24
     volumes:
       - rag-data:/app/chroma_data
@@ -128,12 +149,14 @@ services:
       dockerfile: Dockerfile
     container_name: icu-alert-system
     depends_on:
-      - kafka
-      - ml-service
+      kafka:
+        condition: service_healthy
+      ml-service:
+        condition: service_started
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
       - LLM_PROVIDER=gemini
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-AIzaSyDguHo0ev9d4sYpWINhNxxbIJ5kiisYmV8}
       - GEMINI_MODEL=gemini-2.0-flash-exp
       - BACKEND_API_URL=http://backend-api:8000
       - ENABLE_CONSOLE_ALERTS=true

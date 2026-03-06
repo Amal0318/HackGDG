@@ -67,19 +67,21 @@ class RAGChatAgent:
         prompt_template = """You are an intelligent ICU monitoring assistant helping doctors understand patient data.
 
 Patient Context:
-Patient ID: {patient_id}
+Target: {patient_id}
 Question: {question}
 
 Retrieved Monitoring Data:
 {retrieved_context}
 
 Instructions:
-1. Answer the doctor's question using ONLY the provided monitoring data
-2. Be precise and clinical in your response
-3. If the data doesn't contain relevant information, state that clearly
-4. Include specific vital sign values and trends when answering
-5. Keep response under 250 words
-6. Do not speculate or make up information not present in the data
+1. Answer the doctor's question using ONLY the provided monitoring data above
+2. If Target is "ALL PATIENTS", you MUST list ALL unique patients mentioned in the data
+3. For each patient, include: Patient ID, HR, BP, SpO2, and any alerts
+4. Format multi-patient responses as a numbered list (one patient per line)
+5. For single patient queries, provide detailed trends and analysis
+6. Be precise and clinical - use exact values from the data
+7. Keep response under 300 words
+8. Do not speculate or make up information not in the data
 
 Response:"""
         
@@ -92,7 +94,7 @@ Response:"""
     
     def generate_response(
         self,
-        patient_id: str,
+        patient_id: Optional[str],
         question: str,
         retrieved_context: List[Dict]
     ) -> str:
@@ -100,7 +102,7 @@ Response:"""
         Generate LLM response based on RAG context
         
         Args:
-            patient_id: Patient identifier
+            patient_id: Patient identifier (optional - None for general queries)
             question: User's question
             retrieved_context: List of retrieved monitoring events from RAG
         
@@ -118,7 +120,7 @@ Response:"""
         try:
             # Generate response using LangChain
             response = self.chat_chain.run(
-                patient_id=patient_id,
+                patient_id=patient_id or "ALL PATIENTS",
                 question=question,
                 retrieved_context=context_text
             )
@@ -135,17 +137,26 @@ Response:"""
             return "No recent monitoring data available."
         
         context_lines = []
-        for i, item in enumerate(retrieved_context[:5], 1):
+        for i, item in enumerate(retrieved_context[:10], 1):  # Increased from 5 to 10 for multi-patient queries
             text = item.get('text', '')
-            score = item.get('score', 0)
-            context_lines.append(f"[{i}] (Relevance: {score:.2f}) {text}")
+            score = item.get('relevance_score', item.get('score', 0))
+            patient_id = item.get('patient_id', '')
+            
+            # Include patient_id in context if present (for multi-patient queries)
+            if patient_id:
+                context_lines.append(f"[{i}] Patient {patient_id}: {text} (Relevance: {score:.2f})")
+            else:
+                context_lines.append(f"[{i}] {text} (Relevance: {score:.2f})")
         
         return "\n".join(context_lines)
     
-    def _generate_fallback_response(self, patient_id: str, retrieved_context: List[Dict]) -> str:
+    def _generate_fallback_response(self, patient_id: Optional[str], retrieved_context: List[Dict]) -> str:
         """Fallback response when LLM is not available"""
         if not retrieved_context:
-            return f"No recent data available for patient {patient_id} to answer this question."
+            if patient_id:
+                return f"No recent data available for patient {patient_id} to answer this question."
+            else:
+                return "No recent patient data available to answer this question."
         
         context_summary = retrieved_context[0]['text'] if retrieved_context else "No context"
         

@@ -1,6 +1,13 @@
 # Backend API Service Dockerfile
 FROM python:3.10-slim
 
+# Install build tools needed for pycairo (required by reportlab)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libcairo2-dev \
+    pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
 # Set working directory
 WORKDIR /app
 

@@ -15,8 +15,9 @@ class KafkaConnector:
     """Production-ready Kafka connector for Pathway streaming"""
     
     def __init__(self):
-        self.input_topic = settings.kafka.input_topic
-        self.output_topic = settings.kafka.output_topic
+        self.input_topic   = settings.kafka.input_topic
+        self.output_topic  = settings.kafka.output_topic
+        self.alerts_topic  = settings.kafka.alerts_topic
         self._validate_configuration()
         
     def _validate_configuration(self):
@@ -34,6 +35,7 @@ class KafkaConnector:
         logger.info(f"  Bootstrap servers: {settings.kafka.bootstrap_servers}")
         logger.info(f"  Input topic: {settings.kafka.input_topic}")
         logger.info(f"  Output topic: {settings.kafka.output_topic}")
+        logger.info(f"  Alerts topic: {settings.kafka.alerts_topic}")
         logger.info(f"  Consumer group: {settings.kafka.consumer_group}")
     
     def get_consumer_config(self) -> Dict[str, Any]:
@@ -112,6 +114,47 @@ class KafkaConnector:
             logger.error(f"Failed to create output sink: {e}")
             raise ConnectionError(f"Kafka output connection failed: {e}")
 
+    def create_alerts_sink(self, enriched_stream: pw.Table) -> None:
+        """
+        Pathway-native critical alert routing.
+
+        Uses pw.Table.filter() to select ONLY patients with triage_level IN
+        ('CRITICAL', 'HIGH') or anomaly_flag == True, then writes the filtered
+        sub-stream to the alerts_stream Kafka topic.
+
+        Key Pathway concept: filter() creates a DERIVED TABLE that Pathway
+        maintains incrementally — whenever a patient’s risk crosses the
+        threshold Pathway automatically routes their row to this output
+        without any polling or extra computation.
+        """
+        try:
+            logger.info(
+                f"Setting up Pathway-native critical alert filter → topic: {self.alerts_topic}"
+            )
+
+            # pw.Table.filter() — derived streaming table, updated incrementally by Pathway
+            critical_stream = enriched_stream.filter(
+                pw.this.anomaly_flag |
+                (pw.this.triage_level == "CRITICAL") |
+                (pw.this.triage_level == "HIGH")
+            )
+
+            pw.io.kafka.write(
+                table=critical_stream,
+                topic_name=self.alerts_topic,
+                rdkafka_settings=self.get_producer_config(),
+                format="json",
+            )
+
+            logger.info(
+                "Pathway critical alert stream active: "
+                "filter(anomaly_flag | CRITICAL | HIGH) → alerts_stream"
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to create alerts sink: {e}")
+            raise ConnectionError(f"Kafka alerts sink failed: {e}")
+
     def test_connectivity(self) -> bool:
         """Test Kafka connectivity (for health checks)"""
         try:
@@ -161,8 +204,11 @@ def create_kafka_connections() -> tuple[pw.Table, callable]:
     # Return input stream and a function to create output sink
     def create_output_sink(enriched_stream: pw.Table) -> None:
         return connector.create_output_sink(enriched_stream)
+
+    def create_alerts_sink(enriched_stream: pw.Table) -> None:
+        return connector.create_alerts_sink(enriched_stream)
     
-    return input_stream, create_output_sink
+    return input_stream, create_output_sink, create_alerts_sink
 
 def get_kafka_health_status() -> Dict[str, Any]:
     """Get Kafka health status for monitoring"""

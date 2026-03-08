@@ -63,7 +63,7 @@ class VitalXPathwayEngine:
             
             # Initialize Kafka connections
             logger.info("Setting up Kafka connections")
-            self.input_stream, self.create_output_sink = create_kafka_connections()
+            self.input_stream, self.create_output_sink, self.create_alerts_sink = create_kafka_connections()
             
             logger.info("All components initialized successfully")
             return True
@@ -121,11 +121,21 @@ class VitalXPathwayEngine:
             logger.info("Setting up monitoring and alerting")
             monitored_stream = self.setup_monitoring_and_logging(enriched_stream)
             
-            # Step 4: Create output sink
-            logger.info("Setting up Kafka output sink")
+            # Step 4: Create output sink (vitals_enriched — all patients)
+            logger.info("Setting up Kafka output sink (vitals_enriched)")
             self.create_output_sink(monitored_stream)
-            
+
+            # Step 5: Pathway-native critical alert routing
+            # pw.Table.filter() creates a derived table Pathway maintains incrementally.
+            # No polling — Pathway pushes critical rows to alerts_stream automatically.
+            logger.info(
+                "Setting up Pathway-native critical alert filter → alerts_stream"
+            )
+            self.create_alerts_sink(monitored_stream)
+
             logger.info("Streaming pipeline successfully configured")
+            logger.info("  Output 1: vitals_enriched (ALL patients, enriched + triage_level)")
+            logger.info("  Output 2: alerts_stream   (CRITICAL/HIGH only, pw.filter → kafka.write)")
             return monitored_stream
             
         except Exception as e:

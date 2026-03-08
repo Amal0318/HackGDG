@@ -1,26 +1,22 @@
 import os
-from typing import Optional
 
-# Kafka Configuration
+# ─── Kafka ────────────────────────────────────────────────────────────────────
+# RAG reads vitals_enriched (already feature-engineered by Pathway Pipeline 1)
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
-KAFKA_TOPICS = os.getenv("KAFKA_TOPICS", "vitals").split(",")
-KAFKA_GROUP_ID = os.getenv("KAFKA_GROUP_ID", "rag-indexer-group")
+KAFKA_TOPIC             = os.getenv("KAFKA_TOPIC", "vitals_enriched")
+KAFKA_GROUP_ID          = os.getenv("KAFKA_GROUP_ID", "pathway-rag-indexer")
 
-# ChromaDB Configuration
-CHROMA_PERSIST_DIR = os.getenv("CHROMA_PERSIST_DIR", "./chroma_data")
-COLLECTION_NAME = os.getenv("COLLECTION_NAME", "patient_records")
+# ─── Pathway VectorStoreServer (internal) ────────────────────────────────────
+PATHWAY_HOST = os.getenv("PATHWAY_HOST", "0.0.0.0")
+PATHWAY_PORT = int(os.getenv("PATHWAY_PORT", "8666"))
 
-# LLM Configuration
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "groq")  # groq or ollama
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")  # Set this in environment
-GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+# ─── LLM (Groq) ───────────────────────────────────────────────────────────────
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+GROQ_MODEL   = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 
-# Embedding Model
+# ─── Embedding Model ──────────────────────────────────────────────────────────
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
 
-# Data retention (in hours)
-DATA_RETENTION_HOURS = int(os.getenv("DATA_RETENTION_HOURS", "24"))
-
-# API Configuration
+# ─── FastAPI ──────────────────────────────────────────────────────────────────
 API_HOST = os.getenv("API_HOST", "0.0.0.0")
 API_PORT = int(os.getenv("API_PORT", "8000"))

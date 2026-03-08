@@ -28,6 +28,12 @@ class KafkaSettings(BaseSettings):
         env="KAFKA_OUTPUT_TOPIC",
         description="Output topic for enriched vital signs with risk analysis"
     )
+
+    alerts_topic: str = Field(
+        default="alerts_stream",
+        env="KAFKA_ALERTS_TOPIC",
+        description="Output topic for critical-patient alerts (Pathway filter → kafka.write)"
+    )
     
     consumer_group: str = Field(
         default="vitalx-pathway-engine",

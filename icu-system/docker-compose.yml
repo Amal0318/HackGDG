@@ -115,22 +115,6 @@ services:
       - icu-network
     restart: unless-stopped
 
-  alert-engine:
-    build:
-      context: ./alert-engine
-    container_name: icu-alert-engine
-    depends_on:
-      kafka:
-        condition: service_healthy
-      ml-service:
-        condition: service_started
-    environment:
-      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      ALERT_THRESHOLD: ${ALERT_THRESHOLD:-0.85}
-    networks:
-      - icu-network
-    restart: unless-stopped
-
   # LangChain Alert System - AI-powered emergency notifications
   # Monitors high-risk patients and sends intelligent alerts
   alert-system:

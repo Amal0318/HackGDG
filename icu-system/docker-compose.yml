@@ -69,14 +69,11 @@ services:
     build:
       context: ./pathway-engine
     container_name: icu-pathway-engine
-    ports:
-      - "8080:8080"  # Query API for RAG
     depends_on:
       kafka:
         condition: service_healthy
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      QUERY_API_PORT: 8080
     networks:
       - icu-network
     restart: unless-stopped
@@ -105,9 +102,11 @@ services:
         condition: service_healthy
       pathway-engine:
         condition: service_started
+      rag-service:
+        condition: service_started
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      PATHWAY_RAG_URL: http://pathway-engine:8080
+      PATHWAY_RAG_URL: http://rag-service:8000
       GEMINI_API_KEY: AIzaSyCsrWVr4XgVfRS4PG0-TpWg5XUcJl1WrvU
       LLM_PROVIDER: gemini
       GEMINI_MODEL: gemini-2.5-flash-lite
@@ -145,23 +144,24 @@ services:
       - icu-network
     restart: unless-stopped
 
-  # Standalone RAG service removed - Using integrated RAG inside pathway-engine
-  # Frontend now uses backend API /chat endpoint which queries pathway-engine:8080
-  # rag-service:
-  #   build:
-  #     context: ./rag-service
-  #   container_name: icu-rag-service
-  #   ports:
-  #     - "8002:8000"
-  #   depends_on:
-  #     kafka:
-  #       condition: service_healthy
-  #   environment:
-  #     KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-  #     GROQ_API_KEY: ${GROQ_API_KEY}
-  #   networks:
-  #     - icu-network
-  #   restart: unless-stopped
+  rag-service:
+    build:
+      context: ./rag-service
+    container_name: icu-rag-service
+    ports:
+      - "8002:8000"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      pathway-engine:
+        condition: service_started
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      KAFKA_TOPIC: vitals_enriched
+    networks:
+      - icu-network
+    restart: unless-stopped
 
   frontend:
     build:
@@ -178,3 +178,5 @@ services:
 networks:
   icu-network:
     driver: bridge
+
+

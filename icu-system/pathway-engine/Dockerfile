@@ -13,11 +13,9 @@ RUN apt-get update && apt-get install -y \
     pkg-config \
     git \
     wget \
+    rustc \
+    cargo \
     && rm -rf /var/lib/apt/lists/*
-
-# Install Rust (required for Pathway compilation)
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Create virtual environment for clean dependency management
 RUN python -m venv /opt/venv
@@ -25,8 +23,8 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy requirements and install Python dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
-    pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --timeout 300 --retries 5 --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir --timeout 300 --retries 5 -r requirements.txt
 
 # Production stage - minimal runtime image
 FROM python:3.10-slim AS production

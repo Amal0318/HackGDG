@@ -1,12 +1,14 @@
 # Pathway — core stream processing + LLM xpack + local embedding
-# xpack-llm-docs omitted: pipeline reads from Kafka, not documents (no docling/unstructured needed)
 pathway[xpack-llm,xpack-llm-local]==0.29.1
 
-# sentence-transformers required by SentenceTransformerEmbedder (xpack-llm-local)
-sentence-transformers>=2.2.0
+# NOTE: sentence-transformers is installed in a separate Dockerfile step (before this)
+# to prevent pip from re-resolving torch and downloading the 915 MB CUDA build.
 
 # LLM — groq SDK used directly in main.py
 groq==0.9.0
+
+# pathway.xpacks.llm.parsers imports these unconditionally at module level
+pdf2image>=1.16.0
 
 # Utilities
 python-dotenv>=1.1.0

@@ -5,10 +5,7 @@ numpy==1.26.4
 pandas==2.2.0
 scikit-learn==1.4.0
 
-# Deep Learning - PyTorch
-torch==2.2.0
-torchvision==0.17.0
-torchaudio==2.2.0
+# Deep Learning - PyTorch (installed in Dockerfile with CPU-only build)
 
 # Kafka streaming
 kafka-python==2.0.2

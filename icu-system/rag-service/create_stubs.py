@@ -2,12 +2,16 @@
 Create minimal stubs for packages that pathway.xpacks.llm.parsers imports
 unconditionally at module level, but that this service never actually uses.
 This avoids installing huge optional packages (e.g. unstructured = 50+ MB).
+
+Also stubs pdf2image (avoids needing poppler-utils system deps).
 """
 import pathlib, textwrap
 
 base = pathlib.Path('/usr/local/lib/python3.10/site-packages')
 
 packages = [
+    # pdf2image (not used - we parse Kafka JSON, not PDFs)
+    'pdf2image',
     # unstructured
     'unstructured',
     'unstructured/file_utils',
@@ -35,6 +39,14 @@ for pkg in packages:
     init = p / '__init__.py'
     if not init.exists():
         init.touch()
+
+# pdf2image stub (referenced by pathway.xpacks.llm.parsers but never used)
+(base / 'pdf2image/__init__.py').write_text(textwrap.dedent("""
+def convert_from_path(*args, **kwargs):
+    raise NotImplementedError("pdf2image stubbed - not available")
+def convert_from_bytes(*args, **kwargs):
+    raise NotImplementedError("pdf2image stubbed - not available")
+"""))
 
 # unstructured stubs
 (base / 'unstructured/file_utils/filetype.py').write_text(textwrap.dedent("""

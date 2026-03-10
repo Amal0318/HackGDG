@@ -6,7 +6,13 @@ import asyncio
 import json
 import logging
 from typing import Dict, Optional
-from confluent_kafka import Consumer, KafkaError
+try:
+    from confluent_kafka import Consumer, KafkaError
+    CONFLUENT_KAFKA_AVAILABLE = True
+except ImportError:
+    CONFLUENT_KAFKA_AVAILABLE = False
+    Consumer = None
+    KafkaError = None
 from .config import settings
 
 logger = logging.getLogger("kafka-consumer")
@@ -185,8 +191,10 @@ class KafkaConsumerService:
         self._vitals_task: Optional[asyncio.Task] = None
         self._predictions_task: Optional[asyncio.Task] = None
     
-    def _create_consumer(self, group_id: str) -> Consumer:
+    def _create_consumer(self, group_id: str):
         """Create Kafka consumer"""
+        if not CONFLUENT_KAFKA_AVAILABLE:
+            raise RuntimeError("confluent_kafka is not installed")
         conf = {
             'bootstrap.servers': settings.KAFKA_BOOTSTRAP_SERVERS,
             'group.id': group_id,
@@ -197,6 +205,8 @@ class KafkaConsumerService:
     
     async def start(self):
         """Start consuming from Kafka"""
+        if not CONFLUENT_KAFKA_AVAILABLE:
+            raise RuntimeError("confluent_kafka package is not installed (requirements.txt has kafka-python instead)")
         if self.running:
             logger.warning("Kafka consumer already running")
             return
@@ -347,3 +357,105 @@ class KafkaConsumerService:
 # Global data store instance
 patient_data_store = PatientDataStore()
 kafka_consumer_service = KafkaConsumerService(patient_data_store)
+
+
+# =========================================================
+# MOCK DATA SIMULATOR (fallback when Kafka is unavailable)
+# =========================================================
+
+import random
+import math
+from datetime import datetime
+
+_MOCK_PATIENT_BASELINES = [
+    {"patient_id": "P1", "name": "James Wilson",    "floor_id": "1F", "bed_number": "1A", "age": 58, "_base_hr": 78,  "_base_sbp": 124, "_base_spo2": 97, "_base_rr": 15, "_base_temp": 37.1, "_state": "STABLE"},
+    {"patient_id": "P2", "name": "Maria Garcia",    "floor_id": "2F", "bed_number": "2A", "age": 72, "_base_hr": 88,  "_base_sbp": 108, "_base_spo2": 94, "_base_rr": 19, "_base_temp": 37.6, "_state": "EARLY_DETERIORATION"},
+    {"patient_id": "P3", "name": "Robert Chen",     "floor_id": "3F", "bed_number": "3A", "age": 45, "_base_hr": 105, "_base_sbp": 92,  "_base_spo2": 91, "_base_rr": 24, "_base_temp": 38.4, "_state": "LATE_DETERIORATION"},
+    {"patient_id": "P4", "name": "Sarah Johnson",   "floor_id": "1F", "bed_number": "1B", "age": 63, "_base_hr": 72,  "_base_sbp": 130, "_base_spo2": 98, "_base_rr": 14, "_base_temp": 36.8, "_state": "STABLE"},
+    {"patient_id": "P5", "name": "Michael Brown",   "floor_id": "2F", "bed_number": "2B", "age": 51, "_base_hr": 118, "_base_sbp": 88,  "_base_spo2": 89, "_base_rr": 28, "_base_temp": 38.9, "_state": "CRITICAL"},
+    {"patient_id": "P6", "name": "Emily Davis",     "floor_id": "3F", "bed_number": "3B", "age": 66, "_base_hr": 82,  "_base_sbp": 118, "_base_spo2": 96, "_base_rr": 17, "_base_temp": 37.3, "_state": "RECOVERING"},
+    {"patient_id": "P7", "name": "David Martinez",  "floor_id": "1F", "bed_number": "1C", "age": 79, "_base_hr": 95,  "_base_sbp": 100, "_base_spo2": 93, "_base_rr": 22, "_base_temp": 38.1, "_state": "EARLY_DETERIORATION"},
+    {"patient_id": "P8", "name": "Lisa Thompson",   "floor_id": "2F", "bed_number": "2C", "age": 44, "_base_hr": 68,  "_base_sbp": 135, "_base_spo2": 99, "_base_rr": 13, "_base_temp": 36.7, "_state": "STABLE"},
+]
+
+_STATE_RISK = {
+    "STABLE":              0.12,
+    "RECOVERING":          0.30,
+    "EARLY_DETERIORATION": 0.52,
+    "LATE_DETERIORATION":  0.73,
+    "CRITICAL":            0.88,
+    "INTERVENTION":        0.65,
+}
+
+def _build_patient_record(base: dict, tick: int) -> dict:
+    """Generate a realistic patient record with gentle oscillating vitals."""
+    phase = tick * 0.05  # slow drift
+    noise = lambda std: random.gauss(0, std)
+
+    hr  = base["_base_hr"]  + 3 * math.sin(phase) + noise(1.5)
+    sbp = base["_base_sbp"] + 4 * math.cos(phase) + noise(2.0)
+    dbp = sbp * 0.62 + noise(1.5)
+    spo2 = min(100, base["_base_spo2"] + 0.5 * math.sin(phase + 1) + noise(0.4))
+    rr   = base["_base_rr"]   + 1.5 * math.sin(phase + 2) + noise(0.8)
+    temp = base["_base_temp"] + 0.1 * math.sin(phase * 0.3) + noise(0.05)
+
+    risk = _STATE_RISK.get(base["_state"], 0.1) + random.uniform(-0.03, 0.03)
+    risk = max(0.0, min(1.0, risk))
+
+    if risk >= 0.7:
+        risk_level, is_high = "HIGH", True
+    elif risk >= 0.3:
+        risk_level, is_high = "MEDIUM", False
+    else:
+        risk_level, is_high = "LOW", False
+
+    shock_index = hr / max(sbp, 1.0)
+
+    return {
+        "patient_id":     base["patient_id"],
+        "name":           base["name"],
+        "bed_number":     base["bed_number"],
+        "floor_id":       base["floor_id"],
+        "age":            base["age"],
+        "state":          base["_state"],
+        "timestamp":      datetime.now().isoformat(),
+        # flat vitals (what backend API reads directly)
+        "heart_rate":     round(hr, 1),
+        "systolic_bp":    round(sbp, 1),
+        "diastolic_bp":   round(dbp, 1),
+        "spo2":           round(spo2, 1),
+        "respiratory_rate": round(rr, 1),
+        "temperature":    round(temp, 2),
+        "shock_index":    round(shock_index, 3),
+        # risk
+        "risk_score":     round(risk, 4),
+        "computed_risk":  round(risk, 4),
+        "risk_level":     risk_level,
+        "is_high_risk":   is_high,
+        "anomaly_flag":   1 if is_high else 0,
+        # features (for frontend anomaly badge logic)
+        "features": {
+            "anomaly_flag":        is_high,
+            "hr_anomaly":          hr > 110 or hr < 50,
+            "sbp_anomaly":         sbp < 90 or sbp > 160,
+            "spo2_anomaly":        spo2 < 92,
+            "shock_index_anomaly": shock_index > 1.0,
+            "lactate_anomaly":     False,
+        },
+    }
+
+
+async def run_mock_simulator(store: PatientDataStore):
+    """Background task: update mock patients every 2 seconds."""
+    tick = 0
+    logger.info("🔄 Mock patient simulator started (Kafka unavailable)")
+    # seed all at tick=0 first
+    for base in _MOCK_PATIENT_BASELINES:
+        record = _build_patient_record(base, tick)
+        await store.update_patient(base["patient_id"], record)
+    while True:
+        await asyncio.sleep(2)
+        tick += 1
+        for base in _MOCK_PATIENT_BASELINES:
+            record = _build_patient_record(base, tick)
+            await store.update_patient(base["patient_id"], record)

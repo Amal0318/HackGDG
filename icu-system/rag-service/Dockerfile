@@ -37,7 +37,7 @@ pydantic==2.11.7
 pydantic-core==2.33.2
 pyarrow==18.0.0
 numpy==1.26.4
-typing-extensions>=4.8.0
+typing-extensions>=4.12.2
 typing-inspection>=0.4.2
 # Note: pandas, scipy, scikit-learn removed - not used directly (sentence-transformers brings its own)
 # Sentence transformers ecosystem
@@ -103,6 +103,11 @@ RUN pip install --no-cache-dir --timeout 300 --retries 5 \
     -r requirements.txt \
     --extra-index-url https://download.pytorch.org/whl/cpu \
     -c /constraints.txt
+
+# Force-upgrade typing-extensions AFTER all packages are installed.
+# pathway==0.29.1 resolves it to 4.9.0, but typing-inspection>=0.4.2 (pulled by
+# pydantic>=2.10) needs TypeIs which was added in typing_extensions 4.10.0.
+RUN pip install --no-cache-dir --force-reinstall "typing-extensions>=4.12.2"
 
 # Stub out packages that pathway.xpacks.llm.parsers imports at module level
 # but that this service never uses (avoids downloading 50+ MB optional deps)

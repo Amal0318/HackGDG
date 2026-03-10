@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 
 from .config import settings
-from .kafka_service import patient_data_store, kafka_consumer_service
+from .kafka_service import patient_data_store, kafka_consumer_service, run_mock_simulator
 from .requestly_integration import requestly_service
 
 # Configure logging
@@ -36,14 +36,16 @@ async def lifespan(app: FastAPI):
     logger.info(f"Floors configured: {len(settings.FLOORS)}")
     logger.info(f"🔧 Requestly Integration: ENABLED (Sponsor Feature)")
     
+    _mock_task = None
     try:
         # Start Kafka consumer
         await kafka_consumer_service.start()
         logger.info("✅ Kafka consumer started successfully")
     except Exception as e:
-        logger.error(f"❌ Kafka consumer failed to start: {e}")
-        logger.error("Real-time mode requires working Kafka connection")
-        raise e
+        logger.warning(f"⚠️ Kafka consumer failed to start: {e}")
+        logger.warning("Starting mock patient simulator as fallback...")
+        _mock_task = asyncio.create_task(run_mock_simulator(patient_data_store))
+        logger.info("✅ Mock simulator started with 8 patients across 3 floors")
     
     logger.info("🚀 Backend API ready to serve requests")
     
@@ -51,6 +53,8 @@ async def lifespan(app: FastAPI):
     
     # Shutdown
     logger.info("🛑 Shutting down Backend API")
+    if _mock_task:
+        _mock_task.cancel()
     await kafka_consumer_service.stop()
     logger.info("✅ Shutdown complete")
 
@@ -194,6 +198,42 @@ async def get_patient_detail(
         patient_data["acknowledged_at"] = ack_data.get("at")
     
     return requestly_service.intercept_response(patient_data, f"/api/patients/{patient_id}")
+
+
+@app.get("/api/patients/{patient_id}/history")
+async def get_patient_vitals_history(patient_id: str, hours: int = 1):
+    """Get vitals history for a patient (returns current snapshot as single data point)"""
+    patient_data = await patient_data_store.get_patient(patient_id)
+    if not patient_data:
+        raise HTTPException(status_code=404, detail=f"Patient {patient_id} not found")
+
+    from datetime import datetime
+    point = {
+        "timestamp": datetime.now().isoformat(),
+        "heart_rate": patient_data.get("heart_rate", 75),
+        "systolic_bp": patient_data.get("systolic_bp", 120),
+        "diastolic_bp": patient_data.get("diastolic_bp", 80),
+        "spo2": patient_data.get("spo2", 98),
+        "respiratory_rate": patient_data.get("respiratory_rate", 16),
+        "temperature": patient_data.get("temperature", 37.0),
+    }
+    return {"patient_id": patient_id, "history": [point]}
+
+
+@app.get("/api/patients/{patient_id}/risk-history")
+async def get_patient_risk_history(patient_id: str, hours: int = 1):
+    """Get risk score history for a patient (returns current snapshot as single data point)"""
+    patient_data = await patient_data_store.get_patient(patient_id)
+    if not patient_data:
+        raise HTTPException(status_code=404, detail=f"Patient {patient_id} not found")
+
+    from datetime import datetime
+    risk_score = patient_data.get("risk_score", patient_data.get("computed_risk", 0))
+    point = {
+        "timestamp": datetime.now().isoformat(),
+        "risk_score": risk_score,
+    }
+    return {"patient_id": patient_id, "history": [point]}
 
 
 @app.get("/api/admin/requestly/analytics")

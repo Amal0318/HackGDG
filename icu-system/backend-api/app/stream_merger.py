@@ -6,6 +6,7 @@ Maintains unified patient state from multiple Kafka topics
 import json
 import logging
 import threading
+import time
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
 from typing import Dict, Optional, Callable, List
@@ -84,89 +85,105 @@ class StreamMerger:
         self.is_running = False
     
     def _consume_vitals(self):
-        """Consume vitals_enriched topic"""
+        """Consume vitals_enriched topic with retry logic"""
         
-        try:
-            consumer = KafkaConsumer(
-                'vitals_enriched',
-                bootstrap_servers=self.kafka_servers,
-                group_id='backend-vitals',
-                value_deserializer=lambda m: json.loads(m.decode('utf-8')),
-                auto_offset_reset='earliest'  # Catch up on missed data
-            )
-            
-            logger.info("Vitals consumer connected")
-            
-            for message in consumer:
-                if not self.is_running:
-                    break
+        retry_delays = [5, 10, 20, 30, 60]  # seconds between retries
+        attempt = 0
+        
+        while self.is_running:
+            try:
+                consumer = KafkaConsumer(
+                    'vitals_enriched',
+                    bootstrap_servers=self.kafka_servers,
+                    group_id='backend-vitals',
+                    value_deserializer=lambda m: json.loads(m.decode('utf-8')),
+                    auto_offset_reset='latest',
+                    api_version_auto_timeout_ms=30000,
+                    request_timeout_ms=60000,
+                    connections_max_idle_ms=180000,
+                )
                 
-                try:
-                    data = message.value
-                    patient_id = data.get('patient_id')
+                logger.info("Vitals consumer connected")
+                attempt = 0  # reset on successful connect
+                
+                for message in consumer:
+                    if not self.is_running:
+                        break
                     
-                    if patient_id:
-                        # Update patient state
-                        self.patient_state[patient_id]['vitals'] = data
-                        self.patient_state[patient_id]['last_vitals_update'] = datetime.now()
+                    try:
+                        data = message.value
+                        patient_id = data.get('patient_id')
                         
-                        # Notify listeners
-                        self._notify_listeners(patient_id)
+                        if patient_id:
+                            self.patient_state[patient_id]['vitals'] = data
+                            self.patient_state[patient_id]['last_vitals_update'] = datetime.now()
+                            self._notify_listeners(patient_id)
+                    
+                    except Exception as e:
+                        logger.error(f"Error processing vitals message: {e}")
                 
-                except Exception as e:
-                    logger.error(f"Error processing vitals message: {e}")
-            
-            consumer.close()
-            
-        except Exception as e:
-            logger.error(f"Vitals consumer error: {e}", exc_info=True)
+                consumer.close()
+                
+            except Exception as e:
+                delay = retry_delays[min(attempt, len(retry_delays) - 1)]
+                logger.error(f"Vitals consumer error (attempt {attempt + 1}): {e} — retrying in {delay}s")
+                attempt += 1
+                time.sleep(delay)
     
     def _consume_predictions(self):
-        """Consume vitals_predictions topic"""
+        """Consume vitals_predictions topic with retry logic"""
         
-        try:
-            consumer = KafkaConsumer(
-                'vitals_predictions',
-                bootstrap_servers=self.kafka_servers,
-                group_id='backend-predictions',
-                value_deserializer=lambda m: json.loads(m.decode('utf-8')),
-                auto_offset_reset='earliest'  # Catch up on missed data
-            )
-            
-            logger.info("Predictions consumer connected")
-            
-            for message in consumer:
-                if not self.is_running:
-                    break
+        retry_delays = [5, 10, 20, 30, 60]  # seconds between retries
+        attempt = 0
+        
+        while self.is_running:
+            try:
+                consumer = KafkaConsumer(
+                    'vitals_predictions',
+                    bootstrap_servers=self.kafka_servers,
+                    group_id='backend-predictions',
+                    value_deserializer=lambda m: json.loads(m.decode('utf-8')),
+                    auto_offset_reset='latest',
+                    api_version_auto_timeout_ms=30000,
+                    request_timeout_ms=60000,
+                    connections_max_idle_ms=180000,
+                )
                 
-                try:
-                    data = message.value
-                    patient_id = data.get('patient_id')
+                logger.info("Predictions consumer connected")
+                attempt = 0  # reset on successful connect
+                
+                for message in consumer:
+                    if not self.is_running:
+                        break
                     
-                    if patient_id:
-                        # Update patient state
-                        self.patient_state[patient_id]['prediction'] = data
-                        self.patient_state[patient_id]['last_prediction_update'] = datetime.now()
+                    try:
+                        data = message.value
+                        patient_id = data.get('patient_id')
                         
-                        # Add to history
-                        unified = self.get_unified_view(patient_id)
-                        if unified:
-                            self.patient_history[patient_id].append({
-                                'timestamp': data.get('timestamp'),
-                                'risk_score': data.get('risk_score'),
-                                'vitals': unified.get('vitals', {})
-                            })
-                        
-                        # Notify listeners
-                        self._notify_listeners(patient_id)
+                        if patient_id:
+                            self.patient_state[patient_id]['prediction'] = data
+                            self.patient_state[patient_id]['last_prediction_update'] = datetime.now()
+                            
+                            unified = self.get_unified_view(patient_id)
+                            if unified:
+                                self.patient_history[patient_id].append({
+                                    'timestamp': data.get('timestamp'),
+                                    'risk_score': data.get('risk_score'),
+                                    'vitals': unified.get('vitals', {})
+                                })
+                            
+                            self._notify_listeners(patient_id)
+                    
+                    except Exception as e:
+                        logger.error(f"Error processing prediction message: {e}")
                 
-                except Exception as e:
-                    logger.error(f"Error processing prediction message: {e}")
-            
-            consumer.close()
-            
-        except Exception as e:
-            logger.error(f"Predictions consumer error: {e}", exc_info=True)
+                consumer.close()
+                
+            except Exception as e:
+                delay = retry_delays[min(attempt, len(retry_delays) - 1)]
+                logger.error(f"Predictions consumer error (attempt {attempt + 1}): {e} — retrying in {delay}s")
+                attempt += 1
+                time.sleep(delay)
     
     def get_unified_view(self, patient_id: str) -> Optional[Dict]:
         """
@@ -186,6 +203,7 @@ class StreamMerger:
         
         return {
             'patient_id': patient_id,
+            'floor_id': vitals.get('floor_id', 'ICU-1'),  # Add floor_id with default
             'timestamp': vitals.get('timestamp'),
             'vitals': {
                 'heart_rate': vitals.get('heart_rate'),

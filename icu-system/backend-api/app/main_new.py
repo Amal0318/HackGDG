@@ -5,7 +5,10 @@ WebSocket streaming + REST endpoints + RAG chat integration
 
 import asyncio
 import logging
+import math
+import random
 from contextlib import asynccontextmanager
+from datetime import datetime
 from typing import List, Set
 import httpx
 
@@ -31,8 +34,93 @@ stream_merger: StreamMerger = None
 # Active WebSocket connections
 websocket_connections: Set[WebSocket] = set()
 
-# Pathway Query API URL
-PATHWAY_API_URL = "http://pathway-engine:8080"
+# RAG Service API URL (GROQ-powered)
+PATHWAY_API_URL = "http://rag-service:8002"
+
+# =========================================================
+# MOCK DATA (fallback when Kafka pipeline is not running)
+# =========================================================
+
+_MOCK_BASELINES = [
+    {"patient_id": "P1", "name": "James Wilson",   "floor_id": "ICU-1", "bed": "1A", "age": 58, "hr": 78,  "sbp": 124, "spo2": 97, "rr": 15, "temp": 37.1, "state": "STABLE",              "risk": 0.12},
+    {"patient_id": "P2", "name": "Maria Garcia",   "floor_id": "ICU-1", "bed": "1B", "age": 72, "hr": 88,  "sbp": 108, "spo2": 94, "rr": 19, "temp": 37.6, "state": "EARLY_DETERIORATION", "risk": 0.52},
+    {"patient_id": "P3", "name": "Robert Chen",    "floor_id": "ICU-2", "bed": "2A", "age": 45, "hr": 105, "sbp": 92,  "spo2": 91, "rr": 24, "temp": 38.4, "state": "LATE_DETERIORATION",  "risk": 0.73},
+    {"patient_id": "P4", "name": "Sarah Johnson",  "floor_id": "ICU-2", "bed": "2B", "age": 63, "hr": 72,  "sbp": 130, "spo2": 98, "rr": 14, "temp": 36.8, "state": "STABLE",              "risk": 0.11},
+    {"patient_id": "P5", "name": "Michael Brown",  "floor_id": "ICU-2", "bed": "2C", "age": 51, "hr": 118, "sbp": 88,  "spo2": 89, "rr": 28, "temp": 38.9, "state": "CRITICAL",            "risk": 0.88},
+    {"patient_id": "P6", "name": "Emily Davis",    "floor_id": "ICU-3", "bed": "3A", "age": 66, "hr": 82,  "sbp": 118, "spo2": 96, "rr": 17, "temp": 37.3, "state": "RECOVERING",          "risk": 0.28},
+    {"patient_id": "P7", "name": "David Martinez", "floor_id": "ICU-1", "bed": "1C", "age": 79, "hr": 95,  "sbp": 100, "spo2": 93, "rr": 22, "temp": 38.1, "state": "EARLY_DETERIORATION", "risk": 0.55},
+    {"patient_id": "P8", "name": "Lisa Thompson",  "floor_id": "ICU-3", "bed": "3B", "age": 44, "hr": 68,  "sbp": 135, "spo2": 99, "rr": 13, "temp": 36.7, "state": "STABLE",              "risk": 0.09},
+]
+
+def _build_mock_vitals(b: dict, tick: int) -> dict:
+    phase = tick * 0.05
+    hr  = b["hr"]  + 3 * math.sin(phase) + random.gauss(0, 1.5)
+    sbp = b["sbp"] + 4 * math.cos(phase) + random.gauss(0, 2.0)
+    dbp = sbp * 0.62 + random.gauss(0, 1.5)
+    spo2 = min(100.0, b["spo2"] + 0.5 * math.sin(phase + 1) + random.gauss(0, 0.4))
+    rr   = b["rr"]   + 1.5 * math.sin(phase + 2) + random.gauss(0, 0.8)
+    temp = b["temp"] + 0.1 * math.sin(phase * 0.3) + random.gauss(0, 0.05)
+    risk = max(0.0, min(1.0, b["risk"] + random.uniform(-0.03, 0.03)))
+    shock_index = hr / max(sbp, 1.0)
+    return {
+        "patient_id":   b["patient_id"],
+        "name":         b["name"],
+        "bed_number":   b["bed"],
+        "age":          b["age"],
+        "floor_id":     b["floor_id"],
+        "state":        b["state"],
+        "timestamp":    datetime.now().isoformat(),
+        "heart_rate":   round(hr, 1),
+        "systolic_bp":  round(sbp, 1),
+        "diastolic_bp": round(dbp, 1),
+        "spo2":         round(spo2, 1),
+        "respiratory_rate": round(rr, 1),
+        "temperature":  round(temp, 2),
+        "shock_index":  round(shock_index, 3),
+        "anomaly_flag": risk >= 0.7,
+        "hr_anomaly":   hr > 110 or hr < 50,
+        "sbp_anomaly":  sbp < 90 or sbp > 160,
+        "spo2_anomaly": spo2 < 92,
+        "shock_index_anomaly": shock_index > 1.0,
+        "lactate_anomaly": False,
+    }, risk
+
+def _seed_mock_patients(merger: StreamMerger):
+    """Populate stream_merger with baseline mock patients."""
+    for b in _MOCK_BASELINES:
+        vitals, risk = _build_mock_vitals(b, 0)
+        merger.patient_state[b["patient_id"]]["vitals"] = vitals
+        merger.patient_state[b["patient_id"]]["prediction"] = {
+            "patient_id": b["patient_id"],
+            "risk_score": round(risk, 4),
+            "risk_level": "HIGH" if risk >= 0.7 else ("MEDIUM" if risk >= 0.3 else "LOW"),
+            "timestamp": datetime.now().isoformat(),
+        }
+        merger.patient_state[b["patient_id"]]["last_vitals_update"] = datetime.now()
+        merger.patient_state[b["patient_id"]]["last_prediction_update"] = datetime.now()
+
+async def _run_mock_updater(merger: StreamMerger):
+    """Background task: refresh mock vitals every 2 s (stops when real Kafka data arrives)."""
+    tick = 0
+    while True:
+        await asyncio.sleep(2)
+        tick += 1
+        for b in _MOCK_BASELINES:
+            # If real Kafka data has overwritten this patient, stop mocking them
+            state = merger.patient_state.get(b["patient_id"], {})
+            vitals = state.get("vitals", {})
+            if vitals.get("_kafka_live"):
+                continue
+            new_vitals, risk = _build_mock_vitals(b, tick)
+            merger.patient_state[b["patient_id"]]["vitals"] = new_vitals
+            merger.patient_state[b["patient_id"]]["prediction"] = {
+                "patient_id":  b["patient_id"],
+                "risk_score":  round(risk, 4),
+                "risk_level":  "HIGH" if risk >= 0.7 else ("MEDIUM" if risk >= 0.3 else "LOW"),
+                "timestamp":   datetime.now().isoformat(),
+            }
+            merger.patient_state[b["patient_id"]]["last_vitals_update"] = datetime.now()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -48,12 +136,21 @@ async def lifespan(app: FastAPI):
     stream_merger.start()
     
     logger.info("Stream merger started")
+    
+    # Seed mock patients so the dashboard is never empty (overridden by live Kafka data)
+    _seed_mock_patients(stream_merger)
+    logger.info("Mock patient data seeded as baseline")
+
+    # Start background mock updater
+    _mock_updater = asyncio.create_task(_run_mock_updater(stream_merger))
+    
     logger.info("Backend API ready")
     
     yield
     
     # Shutdown
     logger.info("Shutting down Backend API...")
+    _mock_updater.cancel()
     stream_merger.stop()
     logger.info("Backend API stopped")
 
@@ -354,63 +451,49 @@ async def get_stats_overview():
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     """
-    RAG-powered chat endpoint
+    RAG-powered chat endpoint using GROQ-powered rag-service
     
     Flow:
-    1. Query Pathway RAG for relevant context
-    2. Pass context + question to LLM
-    3. Return grounded response with sources
+    1. Query RAG service with GROQ LLM
+    2. Return response with sources
     """
     
     if stream_merger is None:
         raise HTTPException(status_code=503, detail="Stream merger not initialized")
     
-    # Step 1: Query Pathway RAG
+    # Query RAG service (GROQ-powered)
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=15.0) as client:
             rag_response = await client.post(
-                f"{PATHWAY_API_URL}/query",
+                f"{PATHWAY_API_URL}/api/handoff/query",
                 json={
                     "patient_id": request.patient_id,
-                    "query_text": request.question,
-                    "top_k": 5
+                    "question": request.question
                 }
             )
             
         if rag_response.status_code != 200:
             raise HTTPException(
                 status_code=502,
-                detail=f"Pathway RAG query failed: {rag_response.status_code}"
+                detail=f"RAG service query failed: {rag_response.status_code}"
             )
         
         rag_data = rag_response.json()
-        retrieved_context = rag_data.get('retrieved_context', [])
+        answer = rag_data.get('answer', 'No response from RAG service')
+        context_used = rag_data.get('context_used', [])
         
     except httpx.RequestError as e:
         logger.error(f"RAG query error: {e}")
         raise HTTPException(
             status_code=502,
-            detail=f"Failed to connect to Pathway RAG: {str(e)}"
-        )
-    
-    # Step 2: Generate LLM response using LangChain
-    chat_agent = get_chat_agent()
-    
-    if not retrieved_context:
-        answer = f"No recent data available for patient {request.patient_id} to answer this question."
-    else:
-        # Generate intelligent response using LangChain
-        answer = chat_agent.generate_response(
-            patient_id=request.patient_id,
-            question=request.question,
-            retrieved_context=retrieved_context
+            detail=f"Failed to connect to RAG service: {str(e)}"
         )
     
     return ChatResponse(
         patient_id=request.patient_id,
         question=request.question,
         answer=answer,
-        sources=retrieved_context[:3]  # Return top 3 sources
+        sources=context_used[:3]  # Return top 3 sources
     )
 
 # ================== PDF Report Generation ==================
